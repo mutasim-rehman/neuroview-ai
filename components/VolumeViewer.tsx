@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VolumeData, VolumeRenderStyle, ColorMap, TissuePreset, RenderQuality } from '../types';
@@ -40,6 +40,9 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
   // Use first visible volume as primary
   const primaryVolume = volumes.find(v => v.metadata.visible) || volumes[0];
   if (!primaryVolume) return null;
+
+  // Auto-rotate state
+  const [autoRotate, setAutoRotate] = useState(true);
   const mountRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const materialRef = useRef<THREE.ShaderMaterial | null>(null);
@@ -75,7 +78,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
     controls.enableDamping = true;
     controls.minDistance = 0.5;
     controls.maxDistance = 10;
-    controls.autoRotate = true; 
+    controls.autoRotate = autoRotate; 
     controls.autoRotateSpeed = 1.0;
     controlsRef.current = controls;
 
@@ -422,7 +425,30 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       texture.dispose();
       renderer.dispose();
     };
-  }, [primaryVolume]);
+  }, [primaryVolume, autoRotate]);
+
+  // Keyboard event listener for spacebar to toggle rotation
+  useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      // Only toggle if not typing in an input field
+      if (event.code === 'Space' && event.target instanceof HTMLElement && event.target.tagName !== 'INPUT' && event.target.tagName !== 'TEXTAREA') {
+        event.preventDefault();
+        setAutoRotate(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => {
+      window.removeEventListener('keydown', handleKeyPress);
+    };
+  }, []);
+
+  // Update controls when autoRotate state changes
+  useEffect(() => {
+    if (controlsRef.current) {
+      controlsRef.current.autoRotate = autoRotate;
+    }
+  }, [autoRotate]);
 
   // Update Uniforms & Plane Positions
   useEffect(() => {
