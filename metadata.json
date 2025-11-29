@@ -1,0 +1,5 @@
+{
+  "name": "NeuroView AI",
+  "description": "A high-performance web-based NIfTI medical imaging viewer with real-time AI slice analysis powered by Gemini 2.5.",
+  "requestFramePermissions": []
+}
