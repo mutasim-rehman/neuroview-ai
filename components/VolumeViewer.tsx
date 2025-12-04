@@ -185,6 +185,11 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       varying vec3 vOrigin;
       varying vec3 vDirection;
 
+      // Hash-based random for noise / dithering
+      float rand(vec2 co) {
+        return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+      }
+
       vec2 hitBox(vec3 orig, vec3 dir) {
         const vec3 boxMin = vec3(-0.5);
         const vec3 boxMax = vec3(0.5);
@@ -237,7 +242,8 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
 
       // Calculate gradient for normal estimation
       vec3 calculateGradient(vec3 pos) {
-        float eps = 0.01;
+        // Adaptive epsilon based on texture resolution to avoid blocky normals
+        float eps = 1.0 / 256.0;
         float val = texture(uVolume, pos).r;
         float dx = texture(uVolume, pos + vec3(eps, 0.0, 0.0)).r - val;
         float dy = texture(uVolume, pos + vec3(0.0, eps, 0.0)).r - val;
@@ -260,30 +266,23 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
 
       // Simple ambient occlusion approximation
       float ambientOcclusion(vec3 pos, vec3 normal) {
+        // Lightweight AO: sample a few points along the normal direction
         float ao = 0.0;
-        float sampleRadius = 0.05;
-        int samples = 4;
-        
-        for (int i = 0; i < samples; i++) {
-          float angle = float(i) * 6.28318 / float(samples);
-          vec3 sampleDir = vec3(
-            cos(angle) * normal.x - sin(angle) * normal.y,
-            sin(angle) * normal.x + cos(angle) * normal.y,
-            normal.z
-          );
-          vec3 samplePos = pos + sampleDir * sampleRadius;
-          
+        float sampleRadius = 0.03;
+        const int samples = 3;
+        for (int i = 1; i <= samples; i++) {
+          float s = float(i) / float(samples + 1);
+          vec3 samplePos = pos + normal * sampleRadius * s;
           if (samplePos.x >= 0.0 && samplePos.x <= 1.0 &&
               samplePos.y >= 0.0 && samplePos.y <= 1.0 &&
               samplePos.z >= 0.0 && samplePos.z <= 1.0) {
             float sampleVal = texture(uVolume, samplePos).r;
             if (sampleVal > uThreshold) {
-              ao += 0.25;
+              ao += 1.0 / float(samples);
             }
           }
         }
-        
-        return 1.0 - (ao / float(samples));
+        return 1.0 - ao;
       }
 
       void main() {
@@ -292,16 +291,21 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         if (bounds.x > bounds.y) discard;
         bounds.x = max(bounds.x, 0.0);
 
+        // Jitter starting point per-pixel to reduce banding ("stack of slices" look)
+        float noise = rand(gl_FragCoord.xy);
+
         vec3 p = vOrigin + bounds.x * rayDir;
         vec3 inc = 1.0 / abs(rayDir);
         
         // Adaptive step sizing based on quality
-        float baseSteps = 200.0 * uRenderQuality;
+        float baseSteps = 220.0 * uRenderQuality;
         float delta = min(inc.x, min(inc.y, inc.z)) / baseSteps;
+        // Apply jitter so adjacent rays hit different depths inside a voxel
+        float jitter = noise * delta;
+        p += rayDir * jitter;
+        float t = bounds.x + jitter;
 
         vec4 col = vec4(0.0);
-        float t = bounds.x;
-        
         float maxVal = 0.0;
         vec3 viewDir = normalize(-rayDir);
         vec3 lightDir = normalize(uLightDir);

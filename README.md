@@ -8,8 +8,18 @@
 [![React](https://img.shields.io/badge/React-19.2-blue)](https://react.dev/)
 [![Three.js](https://img.shields.io/badge/Three.js-0.181-green)](https://threejs.org/)
 [![Vite](https://img.shields.io/badge/Vite-6.2-purple)](https://vitejs.dev/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-orange)](https://pytorch.org/)
 
 </div>
+
+## Project Structure
+
+This repository contains two main sub-projects:
+
+1. **Web Visualization Platform** (React/TypeScript) - Medical imaging viewer and visualization tools
+2. **AI Training Pipeline** (`ai-training/`) - Deep learning model training for brain scan analysis
+
+These are kept separate for now but can be integrated later.
 
 ## Overview
 
@@ -159,21 +169,48 @@ For 4D volumes:
 
 ```
 neuroview-ai/
-├── components/
-│   ├── Viewer.tsx              # 2D slice viewer with multi-volume overlay
-│   ├── VolumeViewer.tsx         # 3D volume renderer with advanced shaders
-│   ├── FileUpload.tsx           # File upload component
-│   └── HistogramPanel.tsx      # Histogram and window/level controls
-├── services/
-│   ├── geminiService.ts         # Enhanced AI analysis service
-│   ├── segmentationService.ts   # AI-powered segmentation
-│   └── anomalyDetectionService.ts # Anomaly detection service
-├── utils/
-│   └── niftiLoader.ts           # NIfTI file parser with 4D support
-├── types.ts                     # TypeScript type definitions
-├── App.tsx                      # Main application component
-└── package.json                 # Dependencies and scripts
+├── ai-training/                 # AI/ML Training Sub-Project (Python)
+│   ├── main_train_healthy.py   # Main training pipeline
+│   ├── config/                  # Training configuration
+│   ├── data/                    # Data loading and preprocessing
+│   ├── models/                  # Model architectures
+│   ├── training/                # Training and evaluation
+│   ├── utils/                   # Utility functions
+│   └── requirements.txt         # Python dependencies
+│
+└── [Web Platform]               # Visualization Sub-Project (React/TypeScript)
+    ├── components/
+    │   ├── Viewer.tsx              # 2D slice viewer with multi-volume overlay
+    │   ├── VolumeViewer.tsx         # 3D volume renderer with advanced shaders
+    │   ├── FileUpload.tsx           # File upload component
+    │   └── HistogramPanel.tsx      # Histogram and window/level controls
+    ├── services/
+    │   ├── geminiService.ts         # Enhanced AI analysis service
+    │   ├── segmentationService.ts   # AI-powered segmentation
+    │   └── anomalyDetectionService.ts # Anomaly detection service
+    ├── utils/
+    │   └── niftiLoader.ts           # NIfTI file parser with 4D support
+    ├── types.ts                     # TypeScript type definitions
+    ├── App.tsx                      # Main application component
+    └── package.json                 # Dependencies and scripts
 ```
+
+### AI Training Sub-Project
+
+See [`ai-training/README.md`](ai-training/README.md) for detailed information about the AI training pipeline.
+
+**Quick Start**:
+```bash
+cd ai-training
+pip install -r requirements.txt
+python main_train_healthy.py
+```
+
+The AI training pipeline:
+- Trains on 582 healthy brain T1 scans (70% train, 30% test)
+- Uses 3D CNN architecture for brain scan analysis
+- Automatically handles .nii and .nii.gz files
+- Includes data preprocessing, augmentation, and evaluation
 
 ## Architecture
 
