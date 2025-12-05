@@ -22,3 +22,15 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Data files (medical imaging data - typically large)
+data/
+*.nii
+*.nii.gz
+*.dcm
+*.dicom
+
+# Environment variables
+.env
+.env.local
+.env.*.local

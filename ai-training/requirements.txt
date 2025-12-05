@@ -1,0 +1,14 @@
+# AI Training Dependencies
+torch>=2.0.0
+torchvision>=0.15.0
+nibabel>=5.0.0
+numpy>=1.24.0,<2.0.0  # NumPy 2.0+ has compatibility issues with nibabel
+scipy>=1.10.0
+scikit-learn>=1.3.0
+tqdm>=4.65.0
+tensorboard>=2.13.0
+pillow>=10.0.0
+matplotlib>=3.7.0
+
+# Optional: For faster data loading
+numba>=0.57.0

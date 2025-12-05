@@ -1,0 +1,30 @@
+===============================================
+QUICK FIX FOR NUMPY COMPATIBILITY ISSUE
+===============================================
+
+Your current NumPy version is 2.3.5, which is incompatible with nibabel.
+You need to downgrade to NumPy < 2.0.0.
+
+OPTION 1: Run the fix script (Easiest)
+---------------------------------------
+python fix_numpy.py
+
+OPTION 2: Manual fix (Run these commands)
+------------------------------------------
+pip uninstall numpy -y
+pip install "numpy>=1.24.0,<2.0.0"
+
+OPTION 3: Reinstall all dependencies
+-------------------------------------
+pip install -r requirements.txt --upgrade
+
+VERIFY IT WORKED
+----------------
+python -c "import numpy; print('NumPy version:', numpy.__version__)"
+python -c "import nibabel; print('nibabel imported successfully!')"
+
+Then run your training:
+python main_train_healthy.py
+
+===============================================
+

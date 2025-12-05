@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VolumeData, VolumeRenderStyle, ColorMap, TissuePreset, RenderQuality } from '../types';
+import { apply3DGaussianBlur } from '../utils/volumeBlur';
 
 interface VolumeViewerProps {
   volumes: VolumeData[];
@@ -98,14 +99,6 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         floatData[i] = (rawData[i] - min) / range;
     }
 
-    const texture = new THREE.Data3DTexture(floatData, xDim, yDim, zDim);
-    texture.format = THREE.RedFormat;
-    texture.type = THREE.FloatType;
-    texture.minFilter = THREE.LinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-    texture.unpackAlignment = 1;
-    texture.needsUpdate = true;
-
     // --- Volume Box ---
     const pixDims = primaryVolume.header.pixDims;
     const spacingX = pixDims[1] || 1;
@@ -116,6 +109,27 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
     const physZ = zDim * spacingZ;
     const maxDim = Math.max(physX, Math.max(physY, physZ));
     const scale = new THREE.Vector3(physX / maxDim, physY / maxDim, physZ / maxDim);
+
+    // Apply 3D Gaussian blur to reduce staircasing artifacts
+    // The blur accounts for anisotropic spacing between slices
+    const blurredData = apply3DGaussianBlur(
+      floatData,
+      xDim,
+      yDim,
+      zDim,
+      spacingX,
+      spacingY,
+      spacingZ,
+      1.0 // sigma - adjust this (0.5-2.0) to control blur amount
+    );
+
+    const texture = new THREE.Data3DTexture(blurredData, xDim, yDim, zDim);
+    texture.format = THREE.RedFormat;
+    texture.type = THREE.FloatType;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.unpackAlignment = 1;
+    texture.needsUpdate = true;
 
     // Helpers
     const gridHelper = new THREE.GridHelper(3, 20, 0x10b981, 0x064e3b);
@@ -181,6 +195,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       uniform float uCutPlane; // -1.0 to 1.0, slices along X axis for demo
       uniform vec3 uLightDir; // Light direction (normalized)
       uniform float uRenderQuality; // 0.5=Fast, 1.0=Medium, 2.0=High, 4.0=Ultra
+      uniform vec3 uVolumeDims; // Texture dimensions (xDim, yDim, zDim) for accurate gradient calculation
 
       varying vec3 vOrigin;
       varying vec3 vDirection;
@@ -240,15 +255,21 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         return vec3(t);
       }
 
-      // Calculate gradient for normal estimation
+      // Calculate gradient for normal estimation with proper linear interpolation
       vec3 calculateGradient(vec3 pos) {
-        // Adaptive epsilon based on texture resolution to avoid blocky normals
-        float eps = 1.0 / 256.0;
+        // Use texture dimensions to calculate accurate epsilon for each axis
+        // This ensures proper gradient calculation accounting for anisotropic spacing
+        vec3 eps = vec3(1.0) / uVolumeDims;
+        
+        // Sample with proper spacing - using linear interpolation from the texture
         float val = texture(uVolume, pos).r;
-        float dx = texture(uVolume, pos + vec3(eps, 0.0, 0.0)).r - val;
-        float dy = texture(uVolume, pos + vec3(0.0, eps, 0.0)).r - val;
-        float dz = texture(uVolume, pos + vec3(0.0, 0.0, eps)).r - val;
-        return normalize(vec3(dx, dy, dz));
+        float dx = texture(uVolume, pos + vec3(eps.x, 0.0, 0.0)).r - texture(uVolume, pos - vec3(eps.x, 0.0, 0.0)).r;
+        float dy = texture(uVolume, pos + vec3(0.0, eps.y, 0.0)).r - texture(uVolume, pos - vec3(0.0, eps.y, 0.0)).r;
+        float dz = texture(uVolume, pos + vec3(0.0, 0.0, eps.z)).r - texture(uVolume, pos - vec3(0.0, 0.0, eps.z)).r;
+        
+        // Normalize by the epsilon values to get proper gradient magnitude
+        vec3 gradient = vec3(dx / (2.0 * eps.x), dy / (2.0 * eps.y), dz / (2.0 * eps.z));
+        return normalize(gradient);
       }
 
       // Phong lighting model
@@ -395,7 +416,8 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         uColorMap: { value: 4 },
         uCutPlane: { value: 1.0 },
         uLightDir: { value: new THREE.Vector3(0.5, 0.8, 0.3).normalize() },
-        uRenderQuality: { value: getQualityValue(renderQuality) }
+        uRenderQuality: { value: getQualityValue(renderQuality) },
+        uVolumeDims: { value: new THREE.Vector3(xDim, yDim, zDim) }
       },
       vertexShader,
       fragmentShader,

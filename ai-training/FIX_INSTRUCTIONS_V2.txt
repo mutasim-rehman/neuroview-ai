@@ -1,0 +1,43 @@
+===============================================
+FIX FOR NUMPY BUILD ISSUE
+===============================================
+
+The issue: NumPy is trying to build from source but your GCC version is too old.
+
+SOLUTION: Install a pre-built binary wheel instead
+
+OPTION 1: Run the automated fix script
+---------------------------------------
+python fix_numpy_binary.py
+
+OPTION 2: Manual commands (Recommended)
+----------------------------------------
+1. First, upgrade pip and build tools:
+   python -m pip install --upgrade pip wheel setuptools
+
+2. Then install NumPy from pre-built wheel:
+   python -m pip install --only-binary :all: "numpy>=1.24.0,<2.0.0"
+
+   OR specify exact version:
+   python -m pip install --only-binary :all: numpy==1.26.4
+
+3. If that doesn't work, try:
+   python -m pip install numpy==1.26.4 --prefer-binary
+
+OPTION 3: Use conda (if available)
+-----------------------------------
+conda install numpy=1.26
+
+VERIFY IT WORKED
+----------------
+python -c "import numpy; print('NumPy version:', numpy.__version__)"
+python -c "import nibabel; print('nibabel imported successfully!')"
+
+Then run your training:
+python main_train_healthy.py
+
+===============================================
+NOTE: The --only-binary flag tells pip to only use pre-built wheels,
+avoiding the need to compile from source.
+===============================================
+
