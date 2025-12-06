@@ -199,6 +199,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       uniform int uColorMap; // 0=Gray, 1=Hot, 2=Cool, 3=Rainbow, 4=Anatomy, 5=Density
       uniform float uCutPlane; // -1.0 to 1.0, slices along X axis for demo
       uniform vec3 uLightDir; // Light direction (normalized)
+      uniform vec3 uFillLightDir; // Fill light direction for better visibility
       uniform float uRenderQuality; // 0.5=Fast, 1.0=Medium, 2.0=High, 4.0=Ultra
       uniform vec3 uVolumeDims; // Texture dimensions (xDim, yDim, zDim) for accurate gradient calculation
       uniform float uRoughness; // Surface roughness (0.0=smooth/mirror, 1.0=rough/matte) - low for wet tissue
@@ -281,13 +282,20 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
 
       // Physically-Based Rendering lighting model for organic brain tissue
       // Optimized for wet, hydrated tissue appearance with low roughness and zero metalness
-      vec3 pbrLighting(vec3 normal, vec3 viewDir, vec3 lightDir, vec3 color) {
-        // Ambient component - soft base illumination
-        vec3 ambient = color * 0.25;
+      vec3 pbrLighting(vec3 normal, vec3 viewDir, vec3 lightDir, vec3 fillLightDir, vec3 color) {
+        // Ambient component - increased for better visibility
+        vec3 ambient = color * 0.5;
         
-        // Diffuse component (Lambertian reflection)
+        // Main light diffuse component (Lambertian reflection) - brighter for better visibility
         float NdotL = max(dot(normal, lightDir), 0.0);
-        vec3 diffuse = color * NdotL * 0.65;
+        vec3 mainDiffuse = color * NdotL * 0.8;
+        
+        // Fill light diffuse - softer light from opposite side to reduce harsh shadows
+        float NdotFill = max(dot(normal, fillLightDir), 0.0);
+        vec3 fillDiffuse = color * NdotFill * 0.4;
+        
+        // Combine diffuse components with minimum brightness
+        vec3 diffuse = mainDiffuse + fillDiffuse + color * 0.3;
         
         // Specular component - PBR-based for wet tissue appearance
         // Low roughness (0.2-0.3) creates tight, sharp highlights (wet sheen)
@@ -308,7 +316,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         float fresnel = pow(1.0 - max(dot(viewDir, normal), 0.0), 2.0);
         
         // Specular intensity increases with lower roughness (wetter = shinier)
-        float specularIntensity = (1.0 - uRoughness) * 0.45;
+        float specularIntensity = (1.0 - uRoughness) * 0.4;
         
         // White specular highlights (zero metalness ensures no color tinting)
         // For non-metals (organic tissue), reflections are always white/neutral
@@ -317,7 +325,12 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         // Combine specular with fresnel for realistic wet tissue appearance
         vec3 specular = specularColor * specularPower * specularIntensity * (1.0 + fresnel * 0.5);
         
-        return ambient + diffuse + specular;
+        // Combine all components with minimum brightness to ensure visibility
+        vec3 final = ambient + diffuse + specular;
+        // Ensure minimum brightness so nothing is completely black
+        final = max(final, color * 0.15);
+        
+        return final;
       }
 
       // Simple ambient occlusion approximation
@@ -365,6 +378,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         float maxVal = 0.0;
         vec3 viewDir = normalize(-rayDir);
         vec3 lightDir = normalize(uLightDir);
+        vec3 fillLightDir = normalize(uFillLightDir);
 
         for (float i = 0.0; i < baseSteps; i++) {
            if (t > bounds.y) break;
@@ -395,7 +409,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
                   vec3 baseColor = applyColormap(val);
                   
                   // Apply PBR lighting optimized for wet organic brain tissue
-                  vec3 litColor = pbrLighting(normal, viewDir, lightDir, baseColor);
+                  vec3 litColor = pbrLighting(normal, viewDir, lightDir, fillLightDir, baseColor);
                   
                   // Apply ambient occlusion
                   float ao = ambientOcclusion(uv, normal);
@@ -419,7 +433,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
                    normal = normalize(normal);
                    
                    // Apply PBR lighting optimized for wet organic brain tissue
-                   rgb = pbrLighting(normal, viewDir, lightDir, rgb);
+                   rgb = pbrLighting(normal, viewDir, lightDir, fillLightDir, rgb);
                    
                    // Depth-based alpha falloff
                    float depthAlpha = 1.0 - (t - bounds.x) * 0.2;
@@ -460,6 +474,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         uColorMap: { value: 4 },
         uCutPlane: { value: 1.0 },
         uLightDir: { value: new THREE.Vector3(0.5, 0.8, 0.3).normalize() },
+        uFillLightDir: { value: new THREE.Vector3(-0.3, 0.5, -0.8).normalize() },
         uRenderQuality: { value: getQualityValue(renderQuality) },
         uVolumeDims: { value: new THREE.Vector3(xDim, yDim, zDim) },
         // PBR material properties optimized for wet organic brain tissue
