@@ -5,12 +5,14 @@ import Viewer from './components/Viewer';
 import VolumeViewer from './components/VolumeViewer';
 import FileUpload from './components/FileUpload';
 import HistogramPanel from './components/HistogramPanel';
+import BrainHealthPanel from './components/BrainHealthPanel';
+import { predictFromVolumeData, checkApiHealth, BrainHealthPrediction } from './services/brainHealthService';
 import { 
   Activity, Layers, Sliders, Info, AlertTriangle, 
   Box, Grid, LayoutDashboard, Ruler, MousePointer2, 
   Type, Droplet, Sun, Eye, Cuboid, Scan, Scissors,
   Thermometer, User, Plus, X, Play, Pause, Volume2,
-  ChevronLeft, ChevronRight, Menu
+  ChevronLeft, ChevronRight, Menu, Brain
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -58,6 +60,12 @@ const App: React.FC = () => {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
 
+  // Brain Health Prediction State
+  const [prediction, setPrediction] = useState<BrainHealthPrediction | null>(null);
+  const [isPredicting, setIsPredicting] = useState(false);
+  const [predictionError, setPredictionError] = useState<string | null>(null);
+  const [apiHealth, setApiHealth] = useState<{ status: string; model_loaded: boolean } | null>(null);
+
   // Get active volume or first volume
   const activeVolume = useMemo(() => {
     if (activeVolumeId) {
@@ -70,6 +78,41 @@ const App: React.FC = () => {
   const visibleVolumes = useMemo(() => {
     return volumes.filter(v => v.metadata.visible);
   }, [volumes]);
+
+  // Check API health on mount
+  useEffect(() => {
+    checkApiHealth()
+      .then(health => {
+        setApiHealth(health);
+        console.log('API Health:', health);
+      })
+      .catch(err => {
+        console.warn('API health check failed:', err);
+        setApiHealth({ status: 'error', model_loaded: false });
+      });
+  }, []);
+
+  // Handle brain health prediction
+  const handlePredictHealth = async () => {
+    if (!activeVolume) {
+      setPredictionError('No volume loaded');
+      return;
+    }
+
+    setIsPredicting(true);
+    setPredictionError(null);
+    setPrediction(null);
+
+    try {
+      const result = await predictFromVolumeData(activeVolume);
+      setPrediction(result);
+    } catch (error: any) {
+      console.error('Prediction error:', error);
+      setPredictionError(error.message || 'Failed to predict brain health');
+    } finally {
+      setIsPredicting(false);
+    }
+  };
 
   const handleFileSelect = async (file: File) => {
     setLoading(true);
@@ -455,6 +498,41 @@ const App: React.FC = () => {
                 {rightSidebarOpen && (
                 <aside className="w-72 bg-zinc-950 border-l border-zinc-800 flex flex-col p-3 overflow-y-auto flex-shrink-0">
                     
+                    {/* Brain Health Prediction */}
+                    <div className="mb-4 p-3 bg-gradient-to-br from-emerald-950/30 to-zinc-900 rounded-lg border border-emerald-800/30">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Brain className="text-emerald-400" size={18} />
+                            <h3 className="text-sm font-semibold text-white">AI Health Prediction</h3>
+                        </div>
+                        {apiHealth && (
+                            <div className="flex items-center gap-2 mb-3 text-xs">
+                                <div className={`w-2 h-2 rounded-full ${apiHealth.model_loaded ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                                <span className="text-zinc-400">
+                                    {apiHealth.model_loaded ? 'Model Ready' : 'Model Not Loaded'}
+                                </span>
+                            </div>
+                        )}
+                        <button
+                            onClick={handlePredictHealth}
+                            disabled={isPredicting || !activeVolume || (apiHealth && !apiHealth.model_loaded)}
+                            className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                                isPredicting || !activeVolume || (apiHealth && !apiHealth.model_loaded)
+                                    ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                                    : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                            }`}
+                        >
+                            {isPredicting ? 'Predicting...' : 'Predict Health Status'}
+                        </button>
+                        {prediction && (
+                            <button
+                                onClick={() => setPrediction(null)}
+                                className="w-full mt-2 px-3 py-1.5 text-xs text-zinc-400 hover:text-white transition"
+                            >
+                                Clear Results
+                            </button>
+                        )}
+                    </div>
+
                     {/* Volume Management */}
                     {volumes.length > 0 && (
                         <div className="mb-4 bg-zinc-900 rounded-lg p-2 border border-zinc-800">
@@ -717,6 +795,19 @@ const App: React.FC = () => {
                 </aside>
                 )}
             </div>
+        )}
+
+        {/* Brain Health Prediction Panel */}
+        {(prediction || isPredicting || predictionError) && (
+            <BrainHealthPanel
+                prediction={prediction}
+                isPredicting={isPredicting}
+                error={predictionError}
+                onClose={() => {
+                    setPrediction(null);
+                    setPredictionError(null);
+                }}
+            />
         )}
       </main>
     </div>
