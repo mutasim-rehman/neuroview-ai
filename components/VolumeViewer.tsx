@@ -283,19 +283,19 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       // Physically-Based Rendering lighting model for organic brain tissue
       // Optimized for wet, hydrated tissue appearance with low roughness and zero metalness
       vec3 pbrLighting(vec3 normal, vec3 viewDir, vec3 lightDir, vec3 fillLightDir, vec3 color) {
-        // Ambient component - very high for maximum visibility
-        vec3 ambient = color * 1.2;
+        // Ambient component - balanced for visibility with detail preservation
+        vec3 ambient = color * 0.4;
         
-        // Main light diffuse component (Lambertian reflection) - very bright
+        // Main light diffuse component (Lambertian reflection) - balanced brightness
         float NdotL = max(dot(normal, lightDir), 0.0);
-        vec3 mainDiffuse = color * NdotL * 1.2;
+        vec3 mainDiffuse = color * NdotL * 0.9;
         
-        // Fill light diffuse - brighter fill light
+        // Fill light diffuse - softer fill to preserve shadow detail
         float NdotFill = max(dot(normal, fillLightDir), 0.0);
-        vec3 fillDiffuse = color * NdotFill * 0.8;
+        vec3 fillDiffuse = color * NdotFill * 0.35;
         
-        // Combine diffuse components with very high minimum brightness
-        vec3 diffuse = mainDiffuse + fillDiffuse + color * 0.8;
+        // Combine diffuse components with moderate minimum brightness for detail visibility
+        vec3 diffuse = mainDiffuse + fillDiffuse + color * 0.25;
         
         // Specular component - PBR-based for wet tissue appearance
         // Low roughness (0.2-0.3) creates tight, sharp highlights (wet sheen)
@@ -325,10 +325,15 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         // Combine specular with fresnel for realistic wet tissue appearance
         vec3 specular = specularColor * specularPower * specularIntensity * (1.0 + fresnel * 0.5);
         
-        // Combine all components with minimum brightness to ensure visibility
+        // Combine all components
         vec3 final = ambient + diffuse + specular;
-        // Ensure very high minimum brightness so nothing is dark
-        final = max(final, color * 0.6);
+        
+        // Ensure minimum visibility but preserve contrast for detail
+        final = max(final, color * 0.2);
+        
+        // Apply tone mapping to preserve detail while maintaining visibility
+        // Simple Reinhard tone mapping to compress highlights while keeping shadows visible
+        final = final / (final + vec3(1.0)) * 1.1;
         
         return final;
       }
@@ -411,12 +416,12 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
                   // Apply PBR lighting optimized for wet organic brain tissue
                   vec3 litColor = pbrLighting(normal, viewDir, lightDir, fillLightDir, baseColor);
                   
-                  // Reduce ambient occlusion effect - only slight darkening
+                  // Moderate ambient occlusion for detail preservation
                   float ao = ambientOcclusion(uv, normal);
-                  litColor = mix(litColor, litColor * ao, 0.2); // Only 20% AO effect
+                  litColor = mix(litColor, litColor * ao, 0.4); // 40% AO for subtle depth
                   
-                  // Minimal depth darkening
-                  float depthFactor = 1.0 - (t - bounds.x) * 0.1;
+                  // Light depth darkening to preserve detail
+                  float depthFactor = 1.0 - (t - bounds.x) * 0.15;
                   col = vec4(litColor * depthFactor, 1.0);
                   break; 
               }
@@ -435,13 +440,13 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
                    // Apply PBR lighting optimized for wet organic brain tissue
                    rgb = pbrLighting(normal, viewDir, lightDir, fillLightDir, rgb);
                    
-                   // Minimal depth-based alpha falloff
-                   float depthAlpha = 1.0 - (t - bounds.x) * 0.05;
+                   // Balanced depth-based alpha falloff for detail preservation
+                   float depthAlpha = 1.0 - (t - bounds.x) * 0.1;
                    alpha *= depthAlpha;
                    
-                   // Much brighter volumetric rendering
-                   col.rgb += (1.0 - col.a) * alpha * 1.5 * rgb;
-                   col.a += (1.0 - col.a) * alpha * 1.5;
+                   // Balanced volumetric rendering brightness
+                   col.rgb += (1.0 - col.a) * alpha * 0.8 * rgb;
+                   col.a += (1.0 - col.a) * alpha * 0.8;
                }
            }
            
