@@ -110,7 +110,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
     const maxDim = Math.max(physX, Math.max(physY, physZ));
     const scale = new THREE.Vector3(physX / maxDim, physY / maxDim, physZ / maxDim);
 
-    // Apply 3D Gaussian blur to reduce staircasing artifacts
+    // Apply minimal 3D Gaussian blur to reduce staircasing artifacts while preserving detail
     // The blur accounts for anisotropic spacing between slices
     const blurredData = apply3DGaussianBlur(
       floatData,
@@ -120,7 +120,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       spacingX,
       spacingY,
       spacingZ,
-      1.0 // sigma - adjust this (0.5-2.0) to control blur amount
+      0.3 // sigma - reduced for sharper details (0.5-2.0 range, lower = sharper)
     );
 
     const texture = new THREE.Data3DTexture(blurredData, xDim, yDim, zDim);
@@ -264,38 +264,53 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       }
 
       // Calculate gradient for normal estimation with proper linear interpolation
+      // Enhanced for sharper edge detection and detail preservation
       vec3 calculateGradient(vec3 pos) {
         // Use texture dimensions to calculate accurate epsilon for each axis
         // This ensures proper gradient calculation accounting for anisotropic spacing
         vec3 eps = vec3(1.0) / uVolumeDims;
         
+        // Use slightly larger epsilon for better gradient estimation (sharpens edges)
+        vec3 epsScaled = eps * 1.2;
+        
         // Sample with proper spacing - using linear interpolation from the texture
-        float val = texture(uVolume, pos).r;
-        float dx = texture(uVolume, pos + vec3(eps.x, 0.0, 0.0)).r - texture(uVolume, pos - vec3(eps.x, 0.0, 0.0)).r;
-        float dy = texture(uVolume, pos + vec3(0.0, eps.y, 0.0)).r - texture(uVolume, pos - vec3(0.0, eps.y, 0.0)).r;
-        float dz = texture(uVolume, pos + vec3(0.0, 0.0, eps.z)).r - texture(uVolume, pos - vec3(0.0, 0.0, eps.z)).r;
+        // Use central difference for more accurate gradients
+        float dx = texture(uVolume, pos + vec3(epsScaled.x, 0.0, 0.0)).r - texture(uVolume, pos - vec3(epsScaled.x, 0.0, 0.0)).r;
+        float dy = texture(uVolume, pos + vec3(0.0, epsScaled.y, 0.0)).r - texture(uVolume, pos - vec3(0.0, epsScaled.y, 0.0)).r;
+        float dz = texture(uVolume, pos + vec3(0.0, 0.0, epsScaled.z)).r - texture(uVolume, pos - vec3(0.0, 0.0, epsScaled.z)).r;
         
         // Normalize by the epsilon values to get proper gradient magnitude
-        vec3 gradient = vec3(dx / (2.0 * eps.x), dy / (2.0 * eps.y), dz / (2.0 * eps.z));
+        vec3 gradient = vec3(dx / (2.0 * epsScaled.x), dy / (2.0 * epsScaled.y), dz / (2.0 * epsScaled.z));
+        
+        // Enhance gradient magnitude for sharper normal definition
+        float gradMag = length(gradient);
+        if (gradMag > 0.001) {
+          // Sharpen the gradient by slightly increasing contrast
+          gradient = normalize(gradient) * pow(gradMag, 0.9);
+        }
+        
         return normalize(gradient);
       }
 
       // Physically-Based Rendering lighting model for organic brain tissue
       // Optimized for wet, hydrated tissue appearance with low roughness and zero metalness
       vec3 pbrLighting(vec3 normal, vec3 viewDir, vec3 lightDir, vec3 fillLightDir, vec3 color) {
-        // Ambient component - balanced for visibility with detail preservation
-        vec3 ambient = color * 0.4;
+        // Ambient component - reduced for better contrast and detail visibility
+        vec3 ambient = color * 0.25;
         
-        // Main light diffuse component (Lambertian reflection) - balanced brightness
+        // Main light diffuse component - increased contrast for sharper details
         float NdotL = max(dot(normal, lightDir), 0.0);
-        vec3 mainDiffuse = color * NdotL * 0.9;
+        // Apply contrast enhancement - sharpen the light falloff
+        NdotL = pow(NdotL, 0.8); // Sharper falloff for better definition
+        vec3 mainDiffuse = color * NdotL * 1.1;
         
-        // Fill light diffuse - softer fill to preserve shadow detail
+        // Fill light diffuse - minimal fill to maintain shadow contrast
         float NdotFill = max(dot(normal, fillLightDir), 0.0);
-        vec3 fillDiffuse = color * NdotFill * 0.35;
+        NdotFill = pow(NdotFill, 0.9); // Sharper fill light
+        vec3 fillDiffuse = color * NdotFill * 0.25;
         
-        // Combine diffuse components with moderate minimum brightness for detail visibility
-        vec3 diffuse = mainDiffuse + fillDiffuse + color * 0.25;
+        // Combine diffuse components with low minimum to preserve contrast
+        vec3 diffuse = mainDiffuse + fillDiffuse + color * 0.15;
         
         // Specular component - PBR-based for wet tissue appearance
         // Low roughness (0.2-0.3) creates tight, sharp highlights (wet sheen)
@@ -329,11 +344,11 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         vec3 final = ambient + diffuse + specular;
         
         // Ensure minimum visibility but preserve contrast for detail
-        final = max(final, color * 0.2);
+        final = max(final, color * 0.15);
         
-        // Apply tone mapping to preserve detail while maintaining visibility
-        // Simple Reinhard tone mapping to compress highlights while keeping shadows visible
-        final = final / (final + vec3(1.0)) * 1.1;
+        // Apply contrast enhancement for sharper details
+        // Increase contrast curve for better definition
+        final = pow(final, vec3(0.95)); // Slight contrast boost
         
         return final;
       }
@@ -416,12 +431,16 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
                   // Apply PBR lighting optimized for wet organic brain tissue
                   vec3 litColor = pbrLighting(normal, viewDir, lightDir, fillLightDir, baseColor);
                   
-                  // Moderate ambient occlusion for detail preservation
+                  // Light ambient occlusion - reduced to maintain detail sharpness
                   float ao = ambientOcclusion(uv, normal);
-                  litColor = mix(litColor, litColor * ao, 0.4); // 40% AO for subtle depth
+                  litColor = mix(litColor, litColor * ao, 0.25); // 25% AO for subtle depth
                   
-                  // Light depth darkening to preserve detail
-                  float depthFactor = 1.0 - (t - bounds.x) * 0.15;
+                  // Minimal depth darkening to preserve detail visibility
+                  float depthFactor = 1.0 - (t - bounds.x) * 0.1;
+                  
+                  // Enhance contrast for sharper detail definition
+                  litColor = pow(litColor, vec3(0.92));
+                  
                   col = vec4(litColor * depthFactor, 1.0);
                   break; 
               }
