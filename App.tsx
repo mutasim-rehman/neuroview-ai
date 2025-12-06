@@ -92,6 +92,17 @@ const App: React.FC = () => {
       });
   }, []);
 
+  // Show helpful error message in console for debugging
+  useEffect(() => {
+    if (apiHealth && !apiHealth.model_loaded) {
+      console.warn('⚠️ Backend API not connected.');
+      console.warn('To fix:');
+      console.warn('1. Deploy backend API to Railway/Render/etc.');
+      console.warn('2. Set VITE_API_URL environment variable in Vercel dashboard');
+      console.warn('3. Current API_BASE_URL:', import.meta.env.VITE_API_URL || 'http://localhost:5000');
+    }
+  }, [apiHealth]);
+
   // Handle brain health prediction
   const handlePredictHealth = async () => {
     if (!activeVolume) {
@@ -508,21 +519,35 @@ const App: React.FC = () => {
                             <div className="flex items-center gap-2 mb-3 text-xs">
                                 <div className={`w-2 h-2 rounded-full ${apiHealth.model_loaded ? 'bg-emerald-500' : 'bg-red-500'}`} />
                                 <span className="text-zinc-400">
-                                    {apiHealth.model_loaded ? 'Model Ready' : 'Model Not Loaded'}
+                                    {apiHealth.model_loaded ? 'Model Ready' : apiHealth.status === 'error' ? 'API Not Connected' : 'Model Not Loaded'}
                                 </span>
+                            </div>
+                        )}
+                        {!apiHealth && (
+                            <div className="flex items-center gap-2 mb-3 text-xs text-amber-400">
+                                <AlertTriangle size={12} />
+                                <span>Checking API connection...</span>
                             </div>
                         )}
                         <button
                             onClick={handlePredictHealth}
-                            disabled={isPredicting || !activeVolume || (apiHealth && !apiHealth.model_loaded)}
+                            disabled={isPredicting || !activeVolume}
                             className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                                isPredicting || !activeVolume || (apiHealth && !apiHealth.model_loaded)
+                                isPredicting || !activeVolume
                                     ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                                    : apiHealth && !apiHealth.model_loaded
+                                    ? 'bg-amber-600 hover:bg-amber-500 text-white'
                                     : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                             }`}
+                            title={!activeVolume ? 'Load a brain scan first' : apiHealth && !apiHealth.model_loaded ? 'API not connected. Set VITE_API_URL in Vercel.' : ''}
                         >
                             {isPredicting ? 'Predicting...' : 'Predict Health Status'}
                         </button>
+                        {apiHealth && !apiHealth.model_loaded && (
+                            <p className="text-xs text-amber-400 mt-2">
+                                ⚠️ Backend API not connected. Deploy backend and set VITE_API_URL in Vercel settings.
+                            </p>
+                        )}
                         {prediction && (
                             <button
                                 onClick={() => setPrediction(null)}

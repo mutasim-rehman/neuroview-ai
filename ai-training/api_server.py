@@ -285,15 +285,12 @@ def predict_from_array():
 
 
 if __name__ == '__main__':
-    import os
-    port = int(os.environ.get('PORT', 5000))
-    
     print("Loading model...")
     if load_model():
         print("Model loaded successfully!")
-        print(f"Starting Flask server on port {port}")
-        app.run(host='0.0.0.0', port=port, debug=False)
+        print("Starting Flask server on http://localhost:5000")
+        app.run(host='0.0.0.0', port=5000, debug=True)
     else:
         print("Failed to load model. Server will start but predictions will fail.")
         print("Please train the model first or check checkpoint path.")
-        app.run(host='0.0.0.0', port=port, debug=False)
+        app.run(host='0.0.0.0', port=5000, debug=True)

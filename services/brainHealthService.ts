@@ -27,14 +27,25 @@ export const checkApiHealth = async (): Promise<{
   device?: string;
 }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/health`);
+    const response = await fetch(`${API_BASE_URL}/health`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      // Add timeout
+      signal: AbortSignal.timeout(5000) // 5 second timeout
+    });
     if (!response.ok) {
       throw new Error(`API health check failed: ${response.statusText}`);
     }
     return await response.json();
-  } catch (error) {
+  } catch (error: any) {
     console.error('API health check failed:', error);
-    throw new Error('Unable to connect to prediction server. Please ensure the API server is running.');
+    // Return error status instead of throwing, so UI can still work
+    return {
+      status: 'error',
+      model_loaded: false
+    };
   }
 };
 
