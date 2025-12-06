@@ -283,19 +283,19 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       // Physically-Based Rendering lighting model for organic brain tissue
       // Optimized for wet, hydrated tissue appearance with low roughness and zero metalness
       vec3 pbrLighting(vec3 normal, vec3 viewDir, vec3 lightDir, vec3 fillLightDir, vec3 color) {
-        // Ambient component - increased for better visibility
-        vec3 ambient = color * 0.5;
+        // Ambient component - very high for maximum visibility
+        vec3 ambient = color * 1.2;
         
-        // Main light diffuse component (Lambertian reflection) - brighter for better visibility
+        // Main light diffuse component (Lambertian reflection) - very bright
         float NdotL = max(dot(normal, lightDir), 0.0);
-        vec3 mainDiffuse = color * NdotL * 0.8;
+        vec3 mainDiffuse = color * NdotL * 1.2;
         
-        // Fill light diffuse - softer light from opposite side to reduce harsh shadows
+        // Fill light diffuse - brighter fill light
         float NdotFill = max(dot(normal, fillLightDir), 0.0);
-        vec3 fillDiffuse = color * NdotFill * 0.4;
+        vec3 fillDiffuse = color * NdotFill * 0.8;
         
-        // Combine diffuse components with minimum brightness
-        vec3 diffuse = mainDiffuse + fillDiffuse + color * 0.3;
+        // Combine diffuse components with very high minimum brightness
+        vec3 diffuse = mainDiffuse + fillDiffuse + color * 0.8;
         
         // Specular component - PBR-based for wet tissue appearance
         // Low roughness (0.2-0.3) creates tight, sharp highlights (wet sheen)
@@ -327,8 +327,8 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         
         // Combine all components with minimum brightness to ensure visibility
         vec3 final = ambient + diffuse + specular;
-        // Ensure minimum brightness so nothing is completely black
-        final = max(final, color * 0.15);
+        // Ensure very high minimum brightness so nothing is dark
+        final = max(final, color * 0.6);
         
         return final;
       }
@@ -411,12 +411,12 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
                   // Apply PBR lighting optimized for wet organic brain tissue
                   vec3 litColor = pbrLighting(normal, viewDir, lightDir, fillLightDir, baseColor);
                   
-                  // Apply ambient occlusion
+                  // Reduce ambient occlusion effect - only slight darkening
                   float ao = ambientOcclusion(uv, normal);
-                  litColor *= ao;
+                  litColor = mix(litColor, litColor * ao, 0.2); // Only 20% AO effect
                   
-                  // Depth darkening
-                  float depthFactor = 1.0 - (t - bounds.x) * 0.3;
+                  // Minimal depth darkening
+                  float depthFactor = 1.0 - (t - bounds.x) * 0.1;
                   col = vec4(litColor * depthFactor, 1.0);
                   break; 
               }
@@ -435,12 +435,13 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
                    // Apply PBR lighting optimized for wet organic brain tissue
                    rgb = pbrLighting(normal, viewDir, lightDir, fillLightDir, rgb);
                    
-                   // Depth-based alpha falloff
-                   float depthAlpha = 1.0 - (t - bounds.x) * 0.2;
+                   // Minimal depth-based alpha falloff
+                   float depthAlpha = 1.0 - (t - bounds.x) * 0.05;
                    alpha *= depthAlpha;
                    
-                   col.rgb += (1.0 - col.a) * alpha * 0.5 * rgb;
-                   col.a += (1.0 - col.a) * alpha * 0.5;
+                   // Much brighter volumetric rendering
+                   col.rgb += (1.0 - col.a) * alpha * 1.5 * rgb;
+                   col.a += (1.0 - col.a) * alpha * 1.5;
                }
            }
            
