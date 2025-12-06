@@ -172,6 +172,11 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
     coronalPlaneRef.current = corP;
 
 
+    // --- Box Geometry for Volume Rendering ---
+    // Create centered geometry (BoxGeometry is already centered at origin)
+    // This serves as the bounding box for the raymarching shader
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+
     // --- Advanced Raymarching Shader ---
     const vertexShader = `
       varying vec3 vOrigin;
@@ -196,6 +201,8 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       uniform vec3 uLightDir; // Light direction (normalized)
       uniform float uRenderQuality; // 0.5=Fast, 1.0=Medium, 2.0=High, 4.0=Ultra
       uniform vec3 uVolumeDims; // Texture dimensions (xDim, yDim, zDim) for accurate gradient calculation
+      uniform float uRoughness; // Surface roughness (0.0=smooth/mirror, 1.0=rough/matte) - low for wet tissue
+      uniform float uMetalness; // Metalness (0.0=dielectric like tissue, 1.0=metal) - zero for organic tissue
 
       varying vec3 vOrigin;
       varying vec3 vDirection;
@@ -272,15 +279,43 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         return normalize(gradient);
       }
 
-      // Phong lighting model
-      vec3 phongLighting(vec3 normal, vec3 viewDir, vec3 lightDir, vec3 color) {
-        vec3 ambient = color * 0.3; // Ambient component
-        float diff = max(dot(normal, lightDir), 0.0);
-        vec3 diffuse = color * diff * 0.7;
+      // Physically-Based Rendering lighting model for organic brain tissue
+      // Optimized for wet, hydrated tissue appearance with low roughness and zero metalness
+      vec3 pbrLighting(vec3 normal, vec3 viewDir, vec3 lightDir, vec3 color) {
+        // Ambient component - soft base illumination
+        vec3 ambient = color * 0.25;
         
-        vec3 reflectDir = reflect(-lightDir, normal);
-        float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
-        vec3 specular = vec3(1.0) * spec * 0.3;
+        // Diffuse component (Lambertian reflection)
+        float NdotL = max(dot(normal, lightDir), 0.0);
+        vec3 diffuse = color * NdotL * 0.65;
+        
+        // Specular component - PBR-based for wet tissue appearance
+        // Low roughness (0.2-0.3) creates tight, sharp highlights (wet sheen)
+        // Zero metalness ensures white highlights (not colored reflections like metal)
+        vec3 halfDir = normalize(lightDir + viewDir);
+        float NdotH = max(dot(normal, halfDir), 0.0);
+        
+        // Convert roughness to shininess (inverse relationship)
+        // Low roughness (0.2) = high shininess (sharp highlights)
+        // High roughness (1.0) = low shininess (diffuse highlights)
+        float shininess = pow(2.0 / (uRoughness * uRoughness + 0.0001) - 2.0, 1.5);
+        shininess = clamp(shininess, 2.0, 512.0); // Clamp for stability
+        
+        // Blinn-Phong specular with roughness control
+        float specularPower = pow(NdotH, shininess);
+        
+        // Fresnel effect - stronger reflections at grazing angles (wet tissue characteristic)
+        float fresnel = pow(1.0 - max(dot(viewDir, normal), 0.0), 2.0);
+        
+        // Specular intensity increases with lower roughness (wetter = shinier)
+        float specularIntensity = (1.0 - uRoughness) * 0.45;
+        
+        // White specular highlights (zero metalness ensures no color tinting)
+        // For non-metals (organic tissue), reflections are always white/neutral
+        vec3 specularColor = vec3(1.0); // White highlights for dielectric (tissue)
+        
+        // Combine specular with fresnel for realistic wet tissue appearance
+        vec3 specular = specularColor * specularPower * specularIntensity * (1.0 + fresnel * 0.5);
         
         return ambient + diffuse + specular;
       }
@@ -353,10 +388,14 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
            else if (uRenderStyle == 1) { // ISO Surface
               if (val > uThreshold) {
                   vec3 normal = calculateGradient(uv);
+                  
+                  // Ensure smooth shading - normalize for consistent lighting
+                  normal = normalize(normal);
+                  
                   vec3 baseColor = applyColormap(val);
                   
-                  // Apply Phong lighting
-                  vec3 litColor = phongLighting(normal, viewDir, lightDir, baseColor);
+                  // Apply PBR lighting optimized for wet organic brain tissue
+                  vec3 litColor = pbrLighting(normal, viewDir, lightDir, baseColor);
                   
                   // Apply ambient occlusion
                   float ao = ambientOcclusion(uv, normal);
@@ -375,7 +414,12 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
                    
                    // Apply lighting for volumetric rendering
                    vec3 normal = calculateGradient(uv);
-                   rgb = phongLighting(normal, viewDir, lightDir, rgb);
+                   
+                   // Ensure smooth shading - normalize for consistent lighting
+                   normal = normalize(normal);
+                   
+                   // Apply PBR lighting optimized for wet organic brain tissue
+                   rgb = pbrLighting(normal, viewDir, lightDir, rgb);
                    
                    // Depth-based alpha falloff
                    float depthAlpha = 1.0 - (t - bounds.x) * 0.2;
@@ -417,7 +461,12 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         uCutPlane: { value: 1.0 },
         uLightDir: { value: new THREE.Vector3(0.5, 0.8, 0.3).normalize() },
         uRenderQuality: { value: getQualityValue(renderQuality) },
-        uVolumeDims: { value: new THREE.Vector3(xDim, yDim, zDim) }
+        uVolumeDims: { value: new THREE.Vector3(xDim, yDim, zDim) },
+        // PBR material properties optimized for wet organic brain tissue
+        // Low roughness (0.25) creates the wet, slimy appearance with sharp highlights
+        // Zero metalness ensures white specular reflections (not colored like metal)
+        uRoughness: { value: 0.25 },
+        uMetalness: { value: 0.0 }
       },
       vertexShader,
       fragmentShader,
@@ -542,9 +591,6 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       }
 
   }, [threshold, brightness, renderStyle, colorMap, slices, primaryVolume, cutPlane, preset, renderQuality]);
-
-  // Re-use box geometry outside effect to prevent recreation
-  const geometry = new THREE.BoxGeometry(1, 1, 1);
 
   return (
     <div className="w-full h-full bg-gradient-to-b from-zinc-900 via-black to-zinc-900 overflow-hidden relative" ref={mountRef}>
