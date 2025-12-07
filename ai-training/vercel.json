@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "pip install -r requirements.txt",
-  "installCommand": "pip install -r requirements.txt",
+  "buildCommand": "pip install --extra-index-url https://download.pytorch.org/whl/cpu --only-binary :all: -r requirements-api.txt",
+  "installCommand": "pip install --extra-index-url https://download.pytorch.org/whl/cpu --only-binary :all: -r requirements-api.txt",
   "builds": [
     {
       "src": "api_server.py",
