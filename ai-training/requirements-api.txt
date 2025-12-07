@@ -1,0 +1,14 @@
+# Minimal requirements for API server only (reduces memory usage)
+# Use this for Vercel deployment instead of requirements.txt
+# Install with: pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements-api.txt
+
+# Core ML dependencies
+torch>=2.0.0
+numpy>=1.24.0,<2.0.0
+nibabel>=5.0.0
+scipy>=1.10.0
+
+# Web framework
+flask>=2.3.0
+flask-cors>=4.0.0
+

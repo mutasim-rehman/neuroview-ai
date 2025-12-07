@@ -1,0 +1,9 @@
+# Even simpler - install PyTorch CPU in separate step
+# Use this if requirements-api.txt still causes memory issues
+
+numpy>=1.24.0,<2.0.0
+nibabel>=5.0.0
+scipy>=1.10.0
+flask>=2.3.0
+flask-cors>=4.0.0
+
