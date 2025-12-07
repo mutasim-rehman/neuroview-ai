@@ -284,6 +284,14 @@ def predict_from_array():
         }), 500
 
 
+# Initialize model on module load (for Vercel serverless)
+# This will be called once per serverless function instance
+print("Initializing model for serverless deployment...")
+load_model()
+
+# Export handler for Vercel
+handler = app
+
 if __name__ == '__main__':
     print("Loading model...")
     if load_model():
