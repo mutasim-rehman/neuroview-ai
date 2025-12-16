@@ -33,6 +33,7 @@ NeuroView AI is a sophisticated web-based medical imaging platform designed for 
   - **MIP (Maximum Intensity Projection)**: X-ray-like visualization
   - **ISO Surface**: Surface rendering with threshold-based extraction
   - **Volumetric**: Full volume cloud rendering with transparency
+- **Isolate Brain Mode**: One-click isolation of the brain and brainstem by removing outer skull/skin and small floating artifacts
 - **Multi-Planar Views**: Simultaneous display of Axial, Sagittal, and Coronal slices in quad-view mode
 - **Time-Series Support**: Full 4D volume support with playback controls, timeline scrubbing, and animation
 - **Advanced Shaders**: 
@@ -154,6 +155,10 @@ Access the volume management panel (right sidebar) to:
 - **Render Style**: Switch between MIP, ISO Surface, and Volumetric
 - **Color Maps**: Choose from Grayscale, Hot Iron, Cool Blue, Rainbow, Anatomy, Density Heatmap
 - **Tissue Presets**: Quick access to Skin, Bone, Soft Tissue, and Vessel visualization
+- **Isolate Brain**: In the **Adjustments** panel, use the **Isolate Brain** button to:
+  - Switch to 3D volume ISO-surface mode with the Anatomy color map
+  - Automatically tune density threshold and clipping to focus on brain parenchyma and brainstem
+  - Remove most outer skull/skin and small disconnected “trash” blobs around the head
 - **Lightsaber Cut**: Interactive plane cutting for internal structure exploration
 - **Render Quality**: Adjust quality vs. performance (Fast/Medium/High/Ultra)
 
@@ -235,6 +240,12 @@ The AI training pipeline:
 - Phong lighting with ambient occlusion
 - Adaptive step sizing for performance
 - Multiple rendering styles and color maps
+- **Brain Isolation Pipeline**:
+  - **Preset wiring**: `TissuePreset.BRAIN` in `types.ts` and the **Isolate Brain** button in `App.tsx` configure 3D ISO-surface mode with a brain-focused threshold and color map.
+  - **Connected-component filtering**: `VolumeViewer.tsx` creates a normalized 3D scalar field from the NIfTI volume, then:
+    - Finds all 3D connected components above a mid–high intensity threshold
+    - Scores each component by size and distance to the volume center, keeping the **central brain/brainstem mass**
+  - **3D morphological cleanup**: A few iterations of 3×3×3 neighborhood-based erosion peel away thin outer shells and spurious tendrils, removing skull/skin and isolated speckle while preserving the dense inner brain structure.
 
 #### Services Layer
 - **geminiService**: Enhanced analysis with structured output

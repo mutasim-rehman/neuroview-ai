@@ -268,15 +268,6 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         floatData[i] = (rawData[i] - min) / range;
     }
 
-    // When brain isolation is enabled, aggressively remove all but the main
-    // central structure above a mid–high intensity threshold. This keeps the
-    // central brain mass and discards small speckles and outer trash.
-    if (isolateBrain) {
-      // Use a conservative threshold so parenchyma survives even on lower contrast
-      const isoThreshold = Math.max(threshold, 0.3);
-      keepCentralLargestComponent(floatData, xDim, yDim, zDim, isoThreshold);
-    }
-
     // --- Volume Box ---
     const pixDims = primaryVolume.header.pixDims;
     const spacingX = pixDims[1] || 1;
@@ -288,17 +279,26 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
     const maxDim = Math.max(physX, Math.max(physY, physZ));
     const scale = new THREE.Vector3(physX / maxDim, physY / maxDim, physZ / maxDim);
 
-    // Apply minimal 3D Gaussian blur to reduce staircasing artifacts while preserving detail
-    // The blur accounts for anisotropic spacing between slices
+    // When brain isolation is enabled, aggressively remove all but the main
+    // central structure above a mid–high intensity threshold, then apply a
+    // slightly stronger blur for smoother cortical surfaces.
+    let volumeData = floatData;
+    if (isolateBrain) {
+      const isoThreshold = Math.max(threshold, 0.3);
+      keepCentralLargestComponent(volumeData, xDim, yDim, zDim, isoThreshold);
+    }
+
+    // Apply 3D Gaussian blur (stronger when isolating brain to smooth walls/curves)
+    const sigma = isolateBrain ? 0.7 : 0.3;
     const blurredData = apply3DGaussianBlur(
-      floatData,
+      volumeData,
       xDim,
       yDim,
       zDim,
       spacingX,
       spacingY,
       spacingZ,
-      0.3 // sigma - reduced for sharper details (0.5-2.0 range, lower = sharper)
+      sigma
     );
 
     const texture = new THREE.Data3DTexture(blurredData, xDim, yDim, zDim);
