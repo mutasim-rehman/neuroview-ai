@@ -721,6 +721,27 @@ const App: React.FC = () => {
                             <Sliders size={12}/> Adjustments
                         </h3>
                         <div className="space-y-5">
+                             {/* Quick brain isolation helper */}
+                             <div className="flex items-center justify-between text-xs">
+                                <span className="text-zinc-400 flex items-center gap-1.5">
+                                    <Brain size={12} className="text-emerald-400" />
+                                    Isolate
+                                </span>
+                                <button
+                                    onClick={() => {
+                                        // Configure view to highlight brain only
+                                        setRenderMode(RenderMode.VOLUME);
+                                        setVolumeStyle(VolumeRenderStyle.ISO);
+                                        setTissuePreset(TissuePreset.BRAIN);
+                                        setThreshold(0.4);
+                                        setColorMap(ColorMap.ANATOMY);
+                                        setCutPlane(1.0);
+                                    }}
+                                    className="px-2 py-1 rounded-full border border-emerald-500/60 text-emerald-300 hover:bg-emerald-600/20 hover:text-emerald-100 transition text-[11px] font-medium"
+                                >
+                                    Isolate Brain
+                                </button>
+                             </div>
                              <div className="space-y-2">
                                 <div className="flex justify-between text-xs">
                                     <span className="text-zinc-400">Density Threshold</span>

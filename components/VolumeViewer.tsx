@@ -576,6 +576,9 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
             finalThreshold = 0.05; // Skin shows up early
           } else if (preset === TissuePreset.SOFT_TISSUE) {
             finalThreshold = 0.25;
+          } else if (preset === TissuePreset.BRAIN) {
+            // Focus on mid–high intensity structures to emphasize brain parenchyma
+            finalThreshold = 0.4;
           } else if (preset === TissuePreset.BONE) {
             finalThreshold = 0.55; // Bone is dense
           } else if (preset === TissuePreset.VESSELS) {

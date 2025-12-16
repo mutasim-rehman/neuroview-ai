@@ -35,6 +35,7 @@ export enum TissuePreset {
   CUSTOM = 'Custom',
   SKIN = 'Skin',
   SOFT_TISSUE = 'Soft Tissue',
+  BRAIN = 'Brain',
   BONE = 'Bone',
   VESSELS = 'Vessels'
 }
