@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { VolumeData, VolumeRenderStyle, ColorMap, TissuePreset, RenderQuality } from '../types';
+import { VolumeData, VolumeRenderStyle, ColorMap, TissuePreset, RenderQuality, TransferFunction, CrosshairPosition } from '../types';
 import { apply3DGaussianBlur } from '../utils/volumeBlur';
 
 interface VolumeViewerProps {
@@ -20,6 +20,14 @@ interface VolumeViewerProps {
   // 0-1 slider controlling how aggressively to peel off extra masses / thin shells
   // around the isolated brain. 0 = minimal cleanup, 1 = strongest cleanup.
   cleanupStrength?: number;
+  // Transfer function for custom opacity/color mapping
+  transferFunction?: TransferFunction;
+  // Crosshair position for synchronization across views
+  crosshairPosition?: CrosshairPosition;
+  onCrosshairChange?: (pos: CrosshairPosition) => void;
+  // Subsurface scattering controls
+  subsurfaceScattering?: boolean;
+  subsurfaceStrength?: number; // 0-1
 }
 
 // Helper to convert RenderQuality enum to shader value
@@ -212,7 +220,12 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
   preset,
   renderQuality = RenderQuality.HIGH,
   isolateBrain = false,
-  cleanupStrength = 0.5
+  cleanupStrength = 0.5,
+  transferFunction,
+  crosshairPosition,
+  onCrosshairChange,
+  subsurfaceScattering = false,
+  subsurfaceStrength = 0.5
 }) => {
   // Use first visible volume as primary
   const primaryVolume = volumes.find(v => v.metadata.visible) || volumes[0];
@@ -229,6 +242,8 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
   const axialPlaneRef = useRef<THREE.Mesh | null>(null);
   const sagittalPlaneRef = useRef<THREE.Mesh | null>(null);
   const coronalPlaneRef = useRef<THREE.Mesh | null>(null);
+  const crosshairGroupRef = useRef<THREE.Group | null>(null);
+  const scaleRef = useRef<THREE.Vector3 | null>(null);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -316,6 +331,65 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
     texture.unpackAlignment = 1;
     texture.needsUpdate = true;
 
+    // Create transfer function texture (1D, 256 pixels wide)
+    const createTransferFunctionTexture = (tf: TransferFunction | undefined): THREE.DataTexture | null => {
+      if (!tf || !tf.enabled || tf.points.length === 0) {
+        return null;
+      }
+      
+      const width = 256;
+      const data = new Float32Array(width * 4); // RGBA
+      
+      // Sort points by value
+      const sortedPoints = [...tf.points].sort((a, b) => a.value - b.value);
+      
+      for (let i = 0; i < width; i++) {
+        const t = i / (width - 1);
+        
+        // Find surrounding points
+        let lowerIdx = 0;
+        let upperIdx = sortedPoints.length - 1;
+        
+        for (let j = 0; j < sortedPoints.length - 1; j++) {
+          if (t >= sortedPoints[j].value && t <= sortedPoints[j + 1].value) {
+            lowerIdx = j;
+            upperIdx = j + 1;
+            break;
+          }
+        }
+        
+        // Interpolate
+        const lower = sortedPoints[lowerIdx];
+        const upper = sortedPoints[upperIdx];
+        
+        let factor = 0;
+        if (upper.value !== lower.value) {
+          factor = (t - lower.value) / (upper.value - lower.value);
+        }
+        factor = Math.max(0, Math.min(1, factor));
+        
+        const opacity = lower.opacity + (upper.opacity - lower.opacity) * factor;
+        const r = lower.color[0] + (upper.color[0] - lower.color[0]) * factor;
+        const g = lower.color[1] + (upper.color[1] - lower.color[1]) * factor;
+        const b = lower.color[2] + (upper.color[2] - lower.color[2]) * factor;
+        
+        data[i * 4] = r;
+        data[i * 4 + 1] = g;
+        data[i * 4 + 2] = b;
+        data[i * 4 + 3] = opacity;
+      }
+      
+      const tfTexture = new THREE.DataTexture(data, width, 1, THREE.RGBAFormat, THREE.FloatType);
+      tfTexture.minFilter = THREE.LinearFilter;
+      tfTexture.magFilter = THREE.LinearFilter;
+      tfTexture.wrapS = THREE.ClampToEdgeWrapping;
+      tfTexture.needsUpdate = true;
+      
+      return tfTexture;
+    };
+    
+    const tfTexture = createTransferFunctionTexture(transferFunction);
+
     // Helpers
     const gridHelper = new THREE.GridHelper(3, 20, 0x10b981, 0x064e3b);
     gridHelper.position.y = -0.6;
@@ -389,6 +463,10 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       uniform vec3 uVolumeDims; // Texture dimensions (xDim, yDim, zDim) for accurate gradient calculation
       uniform float uRoughness; // Surface roughness (0.0=smooth/mirror, 1.0=rough/matte) - low for wet tissue
       uniform float uMetalness; // Metalness (0.0=dielectric like tissue, 1.0=metal) - zero for organic tissue
+      uniform bool uSubsurfaceScattering; // Enable subsurface scattering
+      uniform float uSubsurfaceStrength; // Subsurface scattering strength (0-1)
+      uniform sampler2D uTransferFunction; // Transfer function texture (1D, RGBA: value, opacity, R, G, B)
+      uniform bool uUseTransferFunction; // Whether to use transfer function
 
       varying vec3 vOrigin;
       varying vec3 vDirection;
@@ -411,7 +489,22 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         return vec2(tNear, tFar);
       }
 
+      // Transfer function lookup
+      vec4 sampleTransferFunction(float intensity) {
+        if (!uUseTransferFunction) {
+          return vec4(1.0, 1.0, 1.0, 1.0); // Default: white, fully opaque
+        }
+        // Sample transfer function texture (1D, x = intensity 0-1)
+        return texture2D(uTransferFunction, vec2(intensity, 0.5));
+      }
+
       vec3 applyColormap(float t) {
+        // If using transfer function, get color from it
+        if (uUseTransferFunction) {
+          vec4 tf = sampleTransferFunction(t);
+          return tf.rgb;
+        }
+        
         if (uColorMap == 0) return vec3(t); // Gray
         
         if (uColorMap == 1) { // Hot
@@ -477,9 +570,49 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         return normalize(gradient);
       }
 
+      // Subsurface scattering approximation
+      // Samples nearby points along the light direction to simulate light scattering inside tissue
+      vec3 calculateSubsurfaceScattering(vec3 pos, vec3 normal, vec3 lightDir, vec3 color, float intensity) {
+        if (!uSubsurfaceScattering || uSubsurfaceStrength < 0.01) {
+          return vec3(0.0);
+        }
+        
+        vec3 sssColor = vec3(0.0);
+        float sssStrength = uSubsurfaceStrength * 0.5; // Scale down for subtlety
+        
+        // Sample points along the light direction (inside the volume)
+        const int sssSamples = 4;
+        float sampleDist = 0.02; // Distance to sample inside tissue
+        
+        for (int i = 1; i <= sssSamples; i++) {
+          float dist = float(i) * sampleDist / float(sssSamples);
+          vec3 samplePos = pos - lightDir * dist; // Sample towards light source (inside tissue)
+          
+          // Clamp to volume bounds
+          if (samplePos.x >= 0.0 && samplePos.x <= 1.0 &&
+              samplePos.y >= 0.0 && samplePos.y <= 1.0 &&
+              samplePos.z >= 0.0 && samplePos.z <= 1.0) {
+            float sampleVal = texture(uVolume, samplePos).r;
+            
+            // Only contribute if there's tissue at this point
+            if (sampleVal > uThreshold * 0.5) {
+              // Weight by distance (closer samples contribute more)
+              float weight = 1.0 / (1.0 + dist * 20.0);
+              // Use the color of the sample point (tissue color)
+              vec3 sampleColor = applyColormap(sampleVal);
+              sssColor += sampleColor * weight * intensity;
+            }
+          }
+        }
+        
+        // Normalize and apply strength
+        sssColor /= float(sssSamples);
+        return sssColor * sssStrength * (1.0 - max(dot(normal, -lightDir), 0.0));
+      }
+
       // Physically-Based Rendering lighting model for organic brain tissue
       // Optimized for wet, hydrated tissue appearance with low roughness and zero metalness
-      vec3 pbrLighting(vec3 normal, vec3 viewDir, vec3 lightDir, vec3 fillLightDir, vec3 color) {
+      vec3 pbrLighting(vec3 normal, vec3 viewDir, vec3 lightDir, vec3 fillLightDir, vec3 color, vec3 pos, float intensity) {
         // Ambient component - reduced for better contrast and detail visibility
         vec3 ambient = color * 0.25;
         
@@ -494,8 +627,11 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         NdotFill = pow(NdotFill, 0.9); // Sharper fill light
         vec3 fillDiffuse = color * NdotFill * 0.25;
         
+        // Subsurface scattering - light scattering inside tissue
+        vec3 sss = calculateSubsurfaceScattering(pos, normal, lightDir, color, intensity);
+        
         // Combine diffuse components with low minimum to preserve contrast
-        vec3 diffuse = mainDiffuse + fillDiffuse + color * 0.15;
+        vec3 diffuse = mainDiffuse + fillDiffuse + color * 0.15 + sss;
         
         // Specular component - PBR-based for wet tissue appearance
         // Low roughness (0.2-0.3) creates tight, sharp highlights (wet sheen)
@@ -605,6 +741,18 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
               maxVal = max(maxVal, val);
            } 
            else if (uRenderStyle == 1) { // ISO Surface
+              // Get opacity from transfer function if enabled
+              float finalAlpha = 1.0;
+              if (uUseTransferFunction) {
+                vec4 tf = sampleTransferFunction(val);
+                finalAlpha = tf.a;
+                if (finalAlpha < 0.01) {
+                  p += rayDir * delta;
+                  t += delta;
+                  continue;
+                }
+              }
+              
               if (val > uThreshold) {
                   vec3 normal = calculateGradient(uv);
                   
@@ -613,8 +761,8 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
                   
                   vec3 baseColor = applyColormap(val);
                   
-                  // Apply PBR lighting optimized for wet organic brain tissue
-                  vec3 litColor = pbrLighting(normal, viewDir, lightDir, fillLightDir, baseColor);
+                  // Apply PBR lighting optimized for wet organic brain tissue with subsurface scattering
+                  vec3 litColor = pbrLighting(normal, viewDir, lightDir, fillLightDir, baseColor, uv, val);
                   
                   // Light ambient occlusion - reduced to maintain detail sharpness
                   float ao = ambientOcclusion(uv, normal);
@@ -626,12 +774,18 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
                   // Enhance contrast for sharper detail definition
                   litColor = pow(litColor, vec3(0.92));
                   
-                  col = vec4(litColor * depthFactor, 1.0);
+                  col = vec4(litColor * depthFactor, finalAlpha);
                   break; 
               }
            }
            else { // Volumetric (Cloud)
+               // Get opacity from transfer function if enabled
                float alpha = smoothstep(uThreshold, uThreshold + 0.1, val);
+               if (uUseTransferFunction) {
+                 vec4 tf = sampleTransferFunction(val);
+                 alpha = tf.a * smoothstep(uThreshold * 0.5, uThreshold, val);
+               }
+               
                if (alpha > 0.0) {
                    vec3 rgb = applyColormap(val);
                    
@@ -641,8 +795,8 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
                    // Ensure smooth shading - normalize for consistent lighting
                    normal = normalize(normal);
                    
-                   // Apply PBR lighting optimized for wet organic brain tissue
-                   rgb = pbrLighting(normal, viewDir, lightDir, fillLightDir, rgb);
+                   // Apply PBR lighting optimized for wet organic brain tissue with subsurface scattering
+                   rgb = pbrLighting(normal, viewDir, lightDir, fillLightDir, rgb, uv, val);
                    
                    // Balanced depth-based alpha falloff for detail preservation
                    float depthAlpha = 1.0 - (t - bounds.x) * 0.1;
@@ -675,6 +829,18 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       }
     `;
 
+    // Default transfer function texture (white, fully opaque)
+    const defaultTfTexture = new THREE.DataTexture(
+      new Float32Array(256 * 4).fill(1.0),
+      256,
+      1,
+      THREE.RGBAFormat,
+      THREE.FloatType
+    );
+    defaultTfTexture.minFilter = THREE.LinearFilter;
+    defaultTfTexture.magFilter = THREE.LinearFilter;
+    defaultTfTexture.needsUpdate = true;
+
     const material = new THREE.ShaderMaterial({
       uniforms: {
         uVolume: { value: texture },
@@ -691,7 +857,11 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         // Low roughness (0.25) creates the wet, slimy appearance with sharp highlights
         // Zero metalness ensures white specular reflections (not colored like metal)
         uRoughness: { value: 0.25 },
-        uMetalness: { value: 0.0 }
+        uMetalness: { value: 0.0 },
+        uSubsurfaceScattering: { value: subsurfaceScattering },
+        uSubsurfaceStrength: { value: subsurfaceStrength },
+        uTransferFunction: { value: tfTexture || defaultTfTexture },
+        uUseTransferFunction: { value: tfTexture !== null }
       },
       vertexShader,
       fragmentShader,
@@ -705,6 +875,84 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
     mesh.scale.copy(scale);
     scene.add(mesh);
 
+    // --- Crosshair Rendering ---
+    const crosshairGroup = new THREE.Group();
+    const crosshairMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2 });
+    
+    // Create crosshair lines (3D axes)
+    const crosshairLength = 0.1;
+    const xLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-crosshairLength, 0, 0),
+        new THREE.Vector3(crosshairLength, 0, 0)
+      ]),
+      crosshairMaterial
+    );
+    const yLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, -crosshairLength, 0),
+        new THREE.Vector3(0, crosshairLength, 0)
+      ]),
+      crosshairMaterial
+    );
+    const zLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, -crosshairLength),
+        new THREE.Vector3(0, 0, crosshairLength)
+      ]),
+      crosshairMaterial
+    );
+    
+    crosshairGroup.add(xLine);
+    crosshairGroup.add(yLine);
+    crosshairGroup.add(zLine);
+    crosshairGroup.visible = false;
+    scene.add(crosshairGroup);
+    crosshairGroupRef.current = crosshairGroup;
+    scaleRef.current = scale;
+    
+    // Handle mouse clicks for crosshair positioning
+    const handleMouseClick = (event: MouseEvent) => {
+      if (!onCrosshairChange || !primaryVolume) return;
+      
+      const rect = renderer.domElement.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+      
+      // Intersect with bounding box
+      const box = new THREE.Box3(
+        new THREE.Vector3(-0.5, -0.5, -0.5).multiply(scale),
+        new THREE.Vector3(0.5, 0.5, 0.5).multiply(scale)
+      );
+      
+      const intersect = raycaster.ray.intersectBox(box, new THREE.Vector3());
+      if (intersect) {
+        // Convert world position to voxel coordinates
+        const localPos = intersect.clone().divide(scale).addScalar(0.5);
+        const { dims } = primaryVolume.header;
+        
+        const vx = Math.floor(localPos.x * dims[1]);
+        const vy = Math.floor(localPos.y * dims[2]);
+        const vz = Math.floor(localPos.z * dims[3]);
+        
+        if (vx >= 0 && vx < dims[1] && vy >= 0 && vy < dims[2] && vz >= 0 && vz < dims[3]) {
+          onCrosshairChange({
+            x: vx,
+            y: vy,
+            z: vz,
+            visible: true
+          });
+        }
+      }
+    };
+    
+    renderer.domElement.addEventListener('click', handleMouseClick);
+
     // --- Animation ---
     let animationId: number;
     const animate = () => {
@@ -717,15 +965,18 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
     // Clean up
     return () => {
       cancelAnimationFrame(animationId);
+      renderer.domElement.removeEventListener('click', handleMouseClick);
       if (mountRef.current && rendererRef.current) {
         mountRef.current.removeChild(rendererRef.current.domElement);
       }
       geometry.dispose();
       material.dispose();
       texture.dispose();
+      if (tfTexture) tfTexture.dispose();
+      defaultTfTexture.dispose();
       renderer.dispose();
     };
-  }, [primaryVolume, autoRotate, isolateBrain]);
+  }, [primaryVolume, autoRotate, isolateBrain, cleanupStrength, transferFunction, subsurfaceScattering, subsurfaceStrength]);
 
   // Keyboard event listener for spacebar to toggle rotation
   useEffect(() => {
@@ -789,6 +1040,51 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
 
           materialRef.current.uniforms.uColorMap.value = mapIdx;
           materialRef.current.uniforms.uRenderQuality.value = getQualityValue(renderQuality);
+          materialRef.current.uniforms.uSubsurfaceScattering.value = subsurfaceScattering;
+          materialRef.current.uniforms.uSubsurfaceStrength.value = subsurfaceStrength;
+          
+          // Update transfer function texture if changed
+          if (transferFunction && transferFunction.enabled && transferFunction.points.length > 0) {
+            // Recreate transfer function texture
+            const width = 256;
+            const data = new Float32Array(width * 4);
+            const sortedPoints = [...transferFunction.points].sort((a, b) => a.value - b.value);
+            
+            for (let i = 0; i < width; i++) {
+              const t = i / (width - 1);
+              let lowerIdx = 0;
+              let upperIdx = sortedPoints.length - 1;
+              
+              for (let j = 0; j < sortedPoints.length - 1; j++) {
+                if (t >= sortedPoints[j].value && t <= sortedPoints[j + 1].value) {
+                  lowerIdx = j;
+                  upperIdx = j + 1;
+                  break;
+                }
+              }
+              
+              const lower = sortedPoints[lowerIdx];
+              const upper = sortedPoints[upperIdx];
+              let factor = 0;
+              if (upper.value !== lower.value) {
+                factor = (t - lower.value) / (upper.value - lower.value);
+              }
+              factor = Math.max(0, Math.min(1, factor));
+              
+              data[i * 4] = lower.color[0] + (upper.color[0] - lower.color[0]) * factor;
+              data[i * 4 + 1] = lower.color[1] + (upper.color[1] - lower.color[1]) * factor;
+              data[i * 4 + 2] = lower.color[2] + (upper.color[2] - lower.color[2]) * factor;
+              data[i * 4 + 3] = lower.opacity + (upper.opacity - lower.opacity) * factor;
+            }
+            
+            if (materialRef.current.uniforms.uTransferFunction.value) {
+              materialRef.current.uniforms.uTransferFunction.value.image.data = data;
+              materialRef.current.uniforms.uTransferFunction.value.needsUpdate = true;
+            }
+            materialRef.current.uniforms.uUseTransferFunction.value = true;
+          } else {
+            materialRef.current.uniforms.uUseTransferFunction.value = false;
+          }
       }
 
       // Update Slice Plane Positions
@@ -818,7 +1114,32 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
            }
       }
 
-  }, [threshold, brightness, renderStyle, colorMap, slices, primaryVolume, cutPlane, preset, renderQuality]);
+  }, [threshold, brightness, renderStyle, colorMap, slices, primaryVolume, cutPlane, preset, renderQuality, subsurfaceScattering, subsurfaceStrength, transferFunction]);
+
+  // Update crosshair position when it changes
+  useEffect(() => {
+    if (!crosshairGroupRef.current || !scaleRef.current || !primaryVolume) return;
+    
+    const crosshairGroup = crosshairGroupRef.current;
+    
+    if (crosshairPosition && crosshairPosition.visible) {
+      const { dims, pixDims } = primaryVolume.header;
+      const physX = dims[1] * (pixDims[1] || 1);
+      const physY = dims[2] * (pixDims[2] || 1);
+      const physZ = dims[3] * (pixDims[3] || 1);
+      const maxDim = Math.max(physX, Math.max(physY, physZ));
+      
+      // Convert voxel coordinates to normalized world space (-0.5 to 0.5)
+      const nx = ((crosshairPosition.x / dims[1]) - 0.5) * (physX / maxDim);
+      const ny = ((crosshairPosition.y / dims[2]) - 0.5) * (physY / maxDim);
+      const nz = ((crosshairPosition.z / dims[3]) - 0.5) * (physZ / maxDim);
+      
+      crosshairGroup.position.set(nx, ny, nz);
+      crosshairGroup.visible = true;
+    } else {
+      crosshairGroup.visible = false;
+    }
+  }, [crosshairPosition, primaryVolume]);
 
   return (
     <div className="w-full h-full bg-gradient-to-b from-zinc-900 via-black to-zinc-900 overflow-hidden relative" ref={mountRef}>

@@ -237,3 +237,23 @@ export interface HistogramData {
   median: number;
   stdDev: number;
 }
+
+// Transfer Function
+export interface TransferFunctionPoint {
+  value: number; // 0-1 normalized intensity
+  opacity: number; // 0-1
+  color: [number, number, number]; // RGB 0-1
+}
+
+export interface TransferFunction {
+  points: TransferFunctionPoint[];
+  enabled: boolean;
+}
+
+// Crosshair Position (3D world coordinates)
+export interface CrosshairPosition {
+  x: number; // Voxel coordinates
+  y: number;
+  z: number;
+  visible: boolean;
+}

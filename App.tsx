@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { parseNifti, createVolumeData, extractTimePoint } from './utils/niftiLoader';
-import { VolumeData, ViewType, RenderMode, VolumeRenderStyle, ColorMap, ToolMode, Measurement, Annotation, TissuePreset, ROIStats, OverlayMode, TimeSeriesState, RenderQuality } from './types';
+import { VolumeData, ViewType, RenderMode, VolumeRenderStyle, ColorMap, ToolMode, Measurement, Annotation, TissuePreset, ROIStats, OverlayMode, TimeSeriesState, RenderQuality, TransferFunction, CrosshairPosition } from './types';
 import Viewer from './components/Viewer';
 import VolumeViewer from './components/VolumeViewer';
 import FileUpload from './components/FileUpload';
 import HistogramPanel from './components/HistogramPanel';
 import BrainHealthPanel from './components/BrainHealthPanel';
+import TransferFunctionEditor from './components/TransferFunctionEditor';
 import { predictFromVolumeData, checkApiHealth, BrainHealthPrediction } from './services/brainHealthService';
 import { 
   Activity, Layers, Sliders, Info, AlertTriangle, 
@@ -41,6 +42,23 @@ const App: React.FC = () => {
   const [roiStats, setRoiStats] = useState<ROIStats | null>(null);
   const [renderQuality, setRenderQuality] = useState<RenderQuality>(RenderQuality.HIGH);
   const [brainCleanup, setBrainCleanup] = useState<number>(0.5); // 0-1, controls removal of extra masses when isolating brain
+  
+  // Advanced Features
+  const [transferFunction, setTransferFunction] = useState<TransferFunction>({
+    enabled: false,
+    points: [
+      { value: 0.0, opacity: 0.0, color: [0, 0, 0] },
+      { value: 1.0, opacity: 1.0, color: [1, 1, 1] }
+    ]
+  });
+  const [crosshairPosition, setCrosshairPosition] = useState<CrosshairPosition>({
+    x: 0,
+    y: 0,
+    z: 0,
+    visible: false
+  });
+  const [subsurfaceScattering, setSubsurfaceScattering] = useState(false);
+  const [subsurfaceStrength, setSubsurfaceStrength] = useState(0.5);
 
   // Tools
   const [toolMode, setToolMode] = useState<ToolMode>(ToolMode.POINTER);
@@ -388,6 +406,8 @@ const App: React.FC = () => {
                                 annotations={annotations} onAddAnnotation={a => setAnnotations([...annotations, a])}
                                 onROIStatsUpdate={setRoiStats}
                                 overlayMode={overlayMode}
+                                crosshairPosition={crosshairPosition}
+                                onCrosshairChange={setCrosshairPosition}
                             />
                             <Viewer 
                                 volumes={visibleVolumes.map(v => getCurrentVolumeData(v))}
@@ -400,6 +420,8 @@ const App: React.FC = () => {
                                 annotations={annotations} onAddAnnotation={a => setAnnotations([...annotations, a])}
                                 onROIStatsUpdate={setRoiStats}
                                 overlayMode={overlayMode}
+                                crosshairPosition={crosshairPosition}
+                                onCrosshairChange={setCrosshairPosition}
                             />
                             <Viewer 
                                 volumes={visibleVolumes.map(v => getCurrentVolumeData(v))}
@@ -412,6 +434,8 @@ const App: React.FC = () => {
                                 annotations={annotations} onAddAnnotation={a => setAnnotations([...annotations, a])}
                                 onROIStatsUpdate={setRoiStats}
                                 overlayMode={overlayMode}
+                                crosshairPosition={crosshairPosition}
+                                onCrosshairChange={setCrosshairPosition}
                             />
                             <div className="relative rounded-xl overflow-hidden border border-zinc-800">
                                 <VolumeViewer 
@@ -429,6 +453,12 @@ const App: React.FC = () => {
                                     preset={tissuePreset}
                                     renderQuality={renderQuality}
                                     isolateBrain={tissuePreset === TissuePreset.BRAIN}
+                                    cleanupStrength={brainCleanup}
+                                    transferFunction={transferFunction}
+                                    crosshairPosition={crosshairPosition}
+                                    onCrosshairChange={setCrosshairPosition}
+                                    subsurfaceScattering={subsurfaceScattering}
+                                    subsurfaceStrength={subsurfaceStrength}
                                     cleanupStrength={tissuePreset === TissuePreset.BRAIN ? brainCleanup : 0}
                                 />
                             </div>
@@ -485,6 +515,11 @@ const App: React.FC = () => {
                                 renderQuality={renderQuality}
                                 isolateBrain={tissuePreset === TissuePreset.BRAIN}
                                 cleanupStrength={tissuePreset === TissuePreset.BRAIN ? brainCleanup : 0}
+                                transferFunction={transferFunction}
+                                crosshairPosition={crosshairPosition}
+                                onCrosshairChange={setCrosshairPosition}
+                                subsurfaceScattering={subsurfaceScattering}
+                                subsurfaceStrength={subsurfaceStrength}
                             />
                         </div>
                     )}
@@ -780,8 +815,51 @@ const App: React.FC = () => {
                                 </div>
                                 <input type="range" min="-100" max="100" value={brightness} onChange={(e) => setBrightness(Number(e.target.value))} className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"/>
                             </div>
+                            
+                            {/* Subsurface Scattering */}
+                            <div className="space-y-2 border-t border-zinc-800 pt-3">
+                                <div className="flex items-center justify-between text-xs">
+                                    <label className="text-zinc-400 flex items-center gap-1.5">
+                                        <Eye size={12} />
+                                        Subsurface Scattering
+                                    </label>
+                                    <input
+                                        type="checkbox"
+                                        checked={subsurfaceScattering}
+                                        onChange={(e) => setSubsurfaceScattering(e.target.checked)}
+                                        className="w-3 h-3 accent-emerald-600"
+                                    />
+                                </div>
+                                {subsurfaceScattering && (
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-zinc-400">Strength</span>
+                                            <span className="text-emerald-400 font-mono">{(subsurfaceStrength * 100).toFixed(0)}%</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="1"
+                                            step="0.05"
+                                            value={subsurfaceStrength}
+                                            onChange={(e) => setSubsurfaceStrength(Number(e.target.value))}
+                                            className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                                        />
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
+
+                    {/* Transfer Function Editor */}
+                    {activeVolume && (
+                        <div className="mb-4">
+                            <TransferFunctionEditor
+                                transferFunction={transferFunction}
+                                onTransferFunctionChange={setTransferFunction}
+                            />
+                        </div>
+                    )}
 
                     <div className="mb-4 border-t border-zinc-900 pt-3">
                         <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">

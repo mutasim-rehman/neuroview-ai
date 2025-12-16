@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { VolumeData, ViewType, TypedArray, ToolMode, Measurement, Annotation, ROIStats, OverlayMode } from '../types';
+import { VolumeData, ViewType, TypedArray, ToolMode, Measurement, Annotation, ROIStats, OverlayMode, CrosshairPosition } from '../types';
 import { Brain, Ruler, MapPin } from 'lucide-react';
 import { analyzeMedicalSlice } from '../services/geminiService';
 
@@ -17,6 +17,8 @@ interface ViewerProps {
   onAddAnnotation: (a: Annotation) => void;
   onROIStatsUpdate: (stats: ROIStats | null) => void;
   overlayMode?: OverlayMode;
+  crosshairPosition?: CrosshairPosition;
+  onCrosshairChange?: (pos: CrosshairPosition) => void;
 }
 
 const Viewer: React.FC<ViewerProps> = ({ 
@@ -32,7 +34,9 @@ const Viewer: React.FC<ViewerProps> = ({
   annotations,
   onAddAnnotation,
   onROIStatsUpdate,
-  overlayMode = OverlayMode.BLEND
+  overlayMode = OverlayMode.BLEND,
+  crosshairPosition,
+  onCrosshairChange
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -310,7 +314,39 @@ const Viewer: React.FC<ViewerProps> = ({
   const handleMouseDown = (e: React.MouseEvent) => {
     const coords = getCanvasCoordinates(e);
     
-    if (toolMode === ToolMode.MEASURE) {
+    if (toolMode === ToolMode.POINTER && onCrosshairChange) {
+      // Update crosshair position
+      const pxX = Math.floor(coords.x);
+      const pxY = Math.floor(coords.y);
+      
+      if (pxX >= 0 && pxX < width && pxY >= 0 && pxY < height) {
+        const xDim = dims[1];
+        const yDim = dims[2];
+        
+        let realX = 0, realY = 0, realZ = 0;
+        
+        if (activeView === ViewType.AXIAL) {
+          realX = pxX;
+          realY = height - 1 - pxY;
+          realZ = sliceIndex;
+        } else if (activeView === ViewType.CORONAL) {
+          realX = pxX;
+          realY = sliceIndex;
+          realZ = height - 1 - pxY;
+        } else if (activeView === ViewType.SAGITTAL) {
+          realX = sliceIndex;
+          realY = pxX;
+          realZ = height - 1 - pxY;
+        }
+        
+        onCrosshairChange({
+          x: realX,
+          y: realY,
+          z: realZ,
+          visible: true
+        });
+      }
+    } else if (toolMode === ToolMode.MEASURE) {
       setIsDragging(true);
       setStartPos(coords);
       setCurrentPos(coords);
@@ -489,6 +525,63 @@ const Viewer: React.FC<ViewerProps> = ({
                strokeDasharray="4 2"
              />
             )}
+
+            {/* Crosshair */}
+            {crosshairPosition && crosshairPosition.visible && (() => {
+              const primaryVolume = volumes[0];
+              if (!primaryVolume) return null;
+              
+              const { dims } = primaryVolume.header;
+              let crosshairX = 0;
+              let crosshairY = 0;
+              let showCrosshair = false;
+              
+              if (activeView === ViewType.AXIAL) {
+                if (crosshairPosition.z === sliceIndex) {
+                  crosshairX = crosshairPosition.x;
+                  crosshairY = height - 1 - crosshairPosition.y;
+                  showCrosshair = true;
+                }
+              } else if (activeView === ViewType.CORONAL) {
+                if (crosshairPosition.y === sliceIndex) {
+                  crosshairX = crosshairPosition.x;
+                  crosshairY = height - 1 - crosshairPosition.z;
+                  showCrosshair = true;
+                }
+              } else if (activeView === ViewType.SAGITTAL) {
+                if (crosshairPosition.x === sliceIndex) {
+                  crosshairX = crosshairPosition.y;
+                  crosshairY = height - 1 - crosshairPosition.z;
+                  showCrosshair = true;
+                }
+              }
+              
+              if (!showCrosshair) return null;
+              
+              return (
+                <g>
+                  <line
+                    x1={crosshairX} y1={0}
+                    x2={crosshairX} y2={height}
+                    stroke="#00ff00" strokeWidth={Math.max(1, width * 0.003)}
+                    opacity={0.8}
+                  />
+                  <line
+                    x1={0} y1={crosshairY}
+                    x2={width} y2={crosshairY}
+                    stroke="#00ff00" strokeWidth={Math.max(1, width * 0.003)}
+                    opacity={0.8}
+                  />
+                  <circle
+                    cx={crosshairX} cy={crosshairY}
+                    r={Math.max(3, width * 0.01)}
+                    fill="none"
+                    stroke="#00ff00" strokeWidth={Math.max(2, width * 0.005)}
+                    opacity={0.9}
+                  />
+                </g>
+              );
+            })()}
           </svg>
         </div>
 
