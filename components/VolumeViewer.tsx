@@ -138,11 +138,58 @@ const keepCentralLargestComponent = (
     currentLabel++;
   }
 
-  // Zero out everything except the largest component
+  // Zero out everything except the chosen central component
   if (bestLabel !== 0) {
     for (let i = 0; i < total; i++) {
       if (labels[i] !== bestLabel) {
         data[i] = 0;
+      }
+    }
+
+    // Light 3D erosion on the chosen component to peel off outer shell
+    // and thin structures (e.g. skull, skin) while keeping the dense core.
+    const iterations = 2;
+    for (let it = 0; it < iterations; it++) {
+      const toZero = new Uint8Array(total);
+      for (let idx = 0; idx < total; idx++) {
+        if (data[idx] < threshold) continue;
+
+        const z = Math.floor(idx / (xDim * yDim));
+        const rem = idx - z * xDim * yDim;
+        const y = Math.floor(rem / xDim);
+        const x = rem - y * xDim;
+
+        let neighborCount = 0;
+
+        for (let dz = -1; dz <= 1; dz++) {
+          const zz = z + dz;
+          if (zz < 0 || zz >= zDim) continue;
+          for (let dy = -1; dy <= 1; dy++) {
+            const yy = y + dy;
+            if (yy < 0 || yy >= yDim) continue;
+            for (let dx = -1; dx <= 1; dx++) {
+              const xx = x + dx;
+              if (xx < 0 || xx >= xDim) continue;
+              if (dx === 0 && dy === 0 && dz === 0) continue;
+              const ni = getIndex(xx, yy, zz);
+              if (data[ni] >= threshold) {
+                neighborCount++;
+              }
+            }
+          }
+        }
+
+        // Voxels with very few neighbors are likely part of thin outer shell
+        // or small tendrils; remove them.
+        if (neighborCount < 10) {
+          toZero[idx] = 1;
+        }
+      }
+
+      for (let i = 0; i < total; i++) {
+        if (toZero[i]) {
+          data[i] = 0;
+        }
       }
     }
   }
