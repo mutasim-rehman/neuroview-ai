@@ -40,6 +40,7 @@ const App: React.FC = () => {
   const [tissuePreset, setTissuePreset] = useState<TissuePreset>(TissuePreset.CUSTOM);
   const [roiStats, setRoiStats] = useState<ROIStats | null>(null);
   const [renderQuality, setRenderQuality] = useState<RenderQuality>(RenderQuality.HIGH);
+  const [brainCleanup, setBrainCleanup] = useState<number>(0.5); // 0-1, controls removal of extra masses when isolating brain
 
   // Tools
   const [toolMode, setToolMode] = useState<ToolMode>(ToolMode.POINTER);
@@ -428,6 +429,7 @@ const App: React.FC = () => {
                                     preset={tissuePreset}
                                     renderQuality={renderQuality}
                                     isolateBrain={tissuePreset === TissuePreset.BRAIN}
+                                    cleanupStrength={tissuePreset === TissuePreset.BRAIN ? brainCleanup : 0}
                                 />
                             </div>
                         </div>
@@ -482,6 +484,7 @@ const App: React.FC = () => {
                                 preset={tissuePreset}
                                 renderQuality={renderQuality}
                                 isolateBrain={tissuePreset === TissuePreset.BRAIN}
+                                cleanupStrength={tissuePreset === TissuePreset.BRAIN ? brainCleanup : 0}
                             />
                         </div>
                     )}
@@ -744,6 +747,25 @@ const App: React.FC = () => {
                                     Isolate Brain
                                 </button>
                              </div>
+                             {tissuePreset === TissuePreset.BRAIN && (
+                               <div className="space-y-2">
+                                  <div className="flex justify-between text-xs">
+                                      <span className="text-zinc-400">Brain Cleanup</span>
+                                      <span className="text-emerald-400 font-mono">
+                                        {(brainCleanup * 100).toFixed(0)}%
+                                      </span>
+                                  </div>
+                                  <input
+                                      type="range"
+                                      min={0}
+                                      max={1}
+                                      step={0.05}
+                                      value={brainCleanup}
+                                      onChange={(e) => setBrainCleanup(Number(e.target.value))}
+                                      className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                                  />
+                               </div>
+                             )}
                              <div className="space-y-2">
                                 <div className="flex justify-between text-xs">
                                     <span className="text-zinc-400">Density Threshold</span>

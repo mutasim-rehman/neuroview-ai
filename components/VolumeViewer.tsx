@@ -17,6 +17,9 @@ interface VolumeViewerProps {
   // When true, aggressively remove small disconnected components so only the
   // main brain mass remains visible.
   isolateBrain?: boolean;
+  // 0-1 slider controlling how aggressively to peel off extra masses / thin shells
+  // around the isolated brain. 0 = minimal cleanup, 1 = strongest cleanup.
+  cleanupStrength?: number;
 }
 
 // Helper to convert RenderQuality enum to shader value
@@ -38,7 +41,8 @@ const keepCentralLargestComponent = (
   xDim: number,
   yDim: number,
   zDim: number,
-  threshold: number
+  threshold: number,
+  cleanupStrength: number
 ) => {
   const total = xDim * yDim * zDim;
   const labels = new Int32Array(total);
@@ -146,9 +150,10 @@ const keepCentralLargestComponent = (
       }
     }
 
-    // Light 3D erosion on the chosen component to peel off outer shell
-    // and thin structures (e.g. skull, skin) while keeping the dense core.
-    const iterations = 2;
+    // 3D erosion on the chosen component to peel off outer shell and thin
+    // structures (e.g. skull, skin) while keeping the dense core.
+    // Driven by cleanupStrength so the user can control aggressiveness.
+    const iterations = cleanupStrength <= 0 ? 0 : 1 + Math.round(cleanupStrength * 2);
     for (let it = 0; it < iterations; it++) {
       const toZero = new Uint8Array(total);
       for (let idx = 0; idx < total; idx++) {
@@ -179,9 +184,10 @@ const keepCentralLargestComponent = (
           }
         }
 
-        // Voxels with very few neighbors are likely part of thin outer shell
-        // or small tendrils; remove them.
-        if (neighborCount < 10) {
+        // Voxels with few neighbors are likely part of thin outer shell or
+        // small tendrils; remove them. The threshold scales with strength.
+        const minNeighbors = 6 + Math.round(cleanupStrength * 10);
+        if (neighborCount < minNeighbors) {
           toZero[idx] = 1;
         }
       }
@@ -205,7 +211,8 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
   cutPlane,
   preset,
   renderQuality = RenderQuality.HIGH,
-  isolateBrain = false
+  isolateBrain = false,
+  cleanupStrength = 0.5
 }) => {
   // Use first visible volume as primary
   const primaryVolume = volumes.find(v => v.metadata.visible) || volumes[0];
@@ -285,7 +292,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
     let volumeData = floatData;
     if (isolateBrain) {
       const isoThreshold = Math.max(threshold, 0.3);
-      keepCentralLargestComponent(volumeData, xDim, yDim, zDim, isoThreshold);
+      keepCentralLargestComponent(volumeData, xDim, yDim, zDim, isoThreshold, cleanupStrength);
     }
 
     // Apply 3D Gaussian blur (stronger when isolating brain to smooth walls/curves)
