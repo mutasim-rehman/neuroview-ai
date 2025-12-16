@@ -61,8 +61,6 @@ const App: React.FC = () => {
   const [subsurfaceStrength, setSubsurfaceStrength] = useState(0.5);
   const [crosshairEnabled, setCrosshairEnabled] = useState(true);
   const [transferFunctionEditorVisible, setTransferFunctionEditorVisible] = useState(true);
-  const [crosshairEnabled, setCrosshairEnabled] = useState(true);
-  const [transferFunctionEditorVisible, setTransferFunctionEditorVisible] = useState(true);
 
   // Tools
   const [toolMode, setToolMode] = useState<ToolMode>(ToolMode.POINTER);
