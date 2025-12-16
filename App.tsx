@@ -453,13 +453,12 @@ const App: React.FC = () => {
                                     preset={tissuePreset}
                                     renderQuality={renderQuality}
                                     isolateBrain={tissuePreset === TissuePreset.BRAIN}
-                                    cleanupStrength={brainCleanup}
+                                    cleanupStrength={tissuePreset === TissuePreset.BRAIN ? brainCleanup : 0}
                                     transferFunction={transferFunction}
                                     crosshairPosition={crosshairPosition}
                                     onCrosshairChange={setCrosshairPosition}
                                     subsurfaceScattering={subsurfaceScattering}
                                     subsurfaceStrength={subsurfaceStrength}
-                                    cleanupStrength={tissuePreset === TissuePreset.BRAIN ? brainCleanup : 0}
                                 />
                             </div>
                         </div>
