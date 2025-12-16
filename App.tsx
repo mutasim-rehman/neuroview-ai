@@ -59,6 +59,10 @@ const App: React.FC = () => {
   });
   const [subsurfaceScattering, setSubsurfaceScattering] = useState(false);
   const [subsurfaceStrength, setSubsurfaceStrength] = useState(0.5);
+  const [crosshairEnabled, setCrosshairEnabled] = useState(true);
+  const [transferFunctionEditorVisible, setTransferFunctionEditorVisible] = useState(true);
+  const [crosshairEnabled, setCrosshairEnabled] = useState(true);
+  const [transferFunctionEditorVisible, setTransferFunctionEditorVisible] = useState(true);
 
   // Tools
   const [toolMode, setToolMode] = useState<ToolMode>(ToolMode.POINTER);
@@ -406,8 +410,8 @@ const App: React.FC = () => {
                                 annotations={annotations} onAddAnnotation={a => setAnnotations([...annotations, a])}
                                 onROIStatsUpdate={setRoiStats}
                                 overlayMode={overlayMode}
-                                crosshairPosition={crosshairPosition}
-                                onCrosshairChange={setCrosshairPosition}
+                                crosshairPosition={crosshairEnabled ? crosshairPosition : { ...crosshairPosition, visible: false }}
+                                onCrosshairChange={crosshairEnabled ? setCrosshairPosition : undefined}
                             />
                             <Viewer 
                                 volumes={visibleVolumes.map(v => getCurrentVolumeData(v))}
@@ -420,8 +424,8 @@ const App: React.FC = () => {
                                 annotations={annotations} onAddAnnotation={a => setAnnotations([...annotations, a])}
                                 onROIStatsUpdate={setRoiStats}
                                 overlayMode={overlayMode}
-                                crosshairPosition={crosshairPosition}
-                                onCrosshairChange={setCrosshairPosition}
+                                crosshairPosition={crosshairEnabled ? crosshairPosition : { ...crosshairPosition, visible: false }}
+                                onCrosshairChange={crosshairEnabled ? setCrosshairPosition : undefined}
                             />
                             <Viewer 
                                 volumes={visibleVolumes.map(v => getCurrentVolumeData(v))}
@@ -434,8 +438,8 @@ const App: React.FC = () => {
                                 annotations={annotations} onAddAnnotation={a => setAnnotations([...annotations, a])}
                                 onROIStatsUpdate={setRoiStats}
                                 overlayMode={overlayMode}
-                                crosshairPosition={crosshairPosition}
-                                onCrosshairChange={setCrosshairPosition}
+                                crosshairPosition={crosshairEnabled ? crosshairPosition : { ...crosshairPosition, visible: false }}
+                                onCrosshairChange={crosshairEnabled ? setCrosshairPosition : undefined}
                             />
                             <div className="relative rounded-xl overflow-hidden border border-zinc-800">
                                 <VolumeViewer 
@@ -515,8 +519,8 @@ const App: React.FC = () => {
                                 isolateBrain={tissuePreset === TissuePreset.BRAIN}
                                 cleanupStrength={tissuePreset === TissuePreset.BRAIN ? brainCleanup : 0}
                                 transferFunction={transferFunction}
-                                crosshairPosition={crosshairPosition}
-                                onCrosshairChange={setCrosshairPosition}
+                                crosshairPosition={crosshairEnabled ? crosshairPosition : { ...crosshairPosition, visible: false }}
+                                onCrosshairChange={crosshairEnabled ? setCrosshairPosition : undefined}
                                 subsurfaceScattering={subsurfaceScattering}
                                 subsurfaceStrength={subsurfaceStrength}
                             />
@@ -815,43 +819,85 @@ const App: React.FC = () => {
                                 <input type="range" min="-100" max="100" value={brightness} onChange={(e) => setBrightness(Number(e.target.value))} className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"/>
                             </div>
                             
-                            {/* Subsurface Scattering */}
-                            <div className="space-y-2 border-t border-zinc-800 pt-3">
-                                <div className="flex items-center justify-between text-xs">
-                                    <label className="text-zinc-400 flex items-center gap-1.5">
-                                        <Eye size={12} />
-                                        Subsurface Scattering
-                                    </label>
-                                    <input
-                                        type="checkbox"
-                                        checked={subsurfaceScattering}
-                                        onChange={(e) => setSubsurfaceScattering(e.target.checked)}
-                                        className="w-3 h-3 accent-emerald-600"
-                                    />
-                                </div>
-                                {subsurfaceScattering && (
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-zinc-400">Strength</span>
-                                            <span className="text-emerald-400 font-mono">{(subsurfaceStrength * 100).toFixed(0)}%</span>
-                                        </div>
+                            {/* Advanced Features Toggles */}
+                            <div className="space-y-3 border-t border-zinc-800 pt-3">
+                                <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Advanced Features</h4>
+                                
+                                {/* Subsurface Scattering */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-xs">
+                                        <label className="text-zinc-400 flex items-center gap-1.5">
+                                            <Eye size={12} />
+                                            Subsurface Scattering
+                                        </label>
                                         <input
-                                            type="range"
-                                            min="0"
-                                            max="1"
-                                            step="0.05"
-                                            value={subsurfaceStrength}
-                                            onChange={(e) => setSubsurfaceStrength(Number(e.target.value))}
-                                            className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                                            type="checkbox"
+                                            checked={subsurfaceScattering}
+                                            onChange={(e) => setSubsurfaceScattering(e.target.checked)}
+                                            className="w-3 h-3 accent-emerald-600"
                                         />
                                     </div>
-                                )}
+                                    {subsurfaceScattering && (
+                                        <div className="space-y-2 pl-5">
+                                            <div className="flex justify-between text-xs">
+                                                <span className="text-zinc-400">Strength</span>
+                                                <span className="text-emerald-400 font-mono">{(subsurfaceStrength * 100).toFixed(0)}%</span>
+                                            </div>
+                                            <input
+                                                type="range"
+                                                min="0"
+                                                max="1"
+                                                step="0.05"
+                                                value={subsurfaceStrength}
+                                                onChange={(e) => setSubsurfaceStrength(Number(e.target.value))}
+                                                className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                {/* Crosshair Synchronization */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-xs">
+                                        <label className="text-zinc-400 flex items-center gap-1.5">
+                                            <MousePointer2 size={12} />
+                                            Crosshair Sync
+                                        </label>
+                                        <input
+                                            type="checkbox"
+                                            checked={crosshairEnabled}
+                                            onChange={(e) => {
+                                                setCrosshairEnabled(e.target.checked);
+                                                if (!e.target.checked) {
+                                                    setCrosshairPosition({ ...crosshairPosition, visible: false });
+                                                }
+                                            }}
+                                            className="w-3 h-3 accent-emerald-600"
+                                        />
+                                    </div>
+                                </div>
+                                
+                                {/* Transfer Function Editor */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-xs">
+                                        <label className="text-zinc-400 flex items-center gap-1.5">
+                                            <Sliders size={12} />
+                                            Transfer Function
+                                        </label>
+                                        <input
+                                            type="checkbox"
+                                            checked={transferFunctionEditorVisible}
+                                            onChange={(e) => setTransferFunctionEditorVisible(e.target.checked)}
+                                            className="w-3 h-3 accent-emerald-600"
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     {/* Transfer Function Editor */}
-                    {activeVolume && (
+                    {activeVolume && transferFunctionEditorVisible && (
                         <div className="mb-4">
                             <TransferFunctionEditor
                                 transferFunction={transferFunction}
