@@ -14,6 +14,9 @@ interface VolumeViewerProps {
   cutPlane: number; // -1 to 1 for "Lightsaber" cutting
   preset: TissuePreset;
   renderQuality?: RenderQuality;
+  // When true, aggressively remove small disconnected components so only the
+  // main brain mass remains visible.
+  isolateBrain?: boolean;
 }
 
 // Helper to convert RenderQuality enum to shader value
@@ -27,6 +30,106 @@ const getQualityValue = (quality: RenderQuality): number => {
   }
 };
 
+// Keep only the largest connected component above a given threshold.
+// This is used for brain isolation to remove small floating blobs.
+const keepLargestComponent = (
+  data: Float32Array,
+  xDim: number,
+  yDim: number,
+  zDim: number,
+  threshold: number
+) => {
+  const total = xDim * yDim * zDim;
+  const labels = new Int32Array(total);
+  const stack = new Int32Array(total);
+  let currentLabel = 1;
+  let bestLabel = 0;
+  let bestSize = 0;
+
+  const getIndex = (x: number, y: number, z: number) => x + y * xDim + z * xDim * yDim;
+
+  for (let idx = 0; idx < total; idx++) {
+    if (labels[idx] !== 0) continue;
+    if (data[idx] < threshold) continue;
+
+    // Start a new component flood fill
+    let size = 0;
+    let sp = 0;
+    stack[sp++] = idx;
+    labels[idx] = currentLabel;
+
+    while (sp > 0) {
+      const cur = stack[--sp];
+      size++;
+
+      const z = Math.floor(cur / (xDim * yDim));
+      const rem = cur - z * xDim * yDim;
+      const y = Math.floor(rem / xDim);
+      const x = rem - y * xDim;
+
+      // 6-neighborhood
+      if (x > 0) {
+        const ni = getIndex(x - 1, y, z);
+        if (labels[ni] === 0 && data[ni] >= threshold) {
+          labels[ni] = currentLabel;
+          stack[sp++] = ni;
+        }
+      }
+      if (x < xDim - 1) {
+        const ni = getIndex(x + 1, y, z);
+        if (labels[ni] === 0 && data[ni] >= threshold) {
+          labels[ni] = currentLabel;
+          stack[sp++] = ni;
+        }
+      }
+      if (y > 0) {
+        const ni = getIndex(x, y - 1, z);
+        if (labels[ni] === 0 && data[ni] >= threshold) {
+          labels[ni] = currentLabel;
+          stack[sp++] = ni;
+        }
+      }
+      if (y < yDim - 1) {
+        const ni = getIndex(x, y + 1, z);
+        if (labels[ni] === 0 && data[ni] >= threshold) {
+          labels[ni] = currentLabel;
+          stack[sp++] = ni;
+        }
+      }
+      if (z > 0) {
+        const ni = getIndex(x, y, z - 1);
+        if (labels[ni] === 0 && data[ni] >= threshold) {
+          labels[ni] = currentLabel;
+          stack[sp++] = ni;
+        }
+      }
+      if (z < zDim - 1) {
+        const ni = getIndex(x, y, z + 1);
+        if (labels[ni] === 0 && data[ni] >= threshold) {
+          labels[ni] = currentLabel;
+          stack[sp++] = ni;
+        }
+      }
+    }
+
+    if (size > bestSize) {
+      bestSize = size;
+      bestLabel = currentLabel;
+    }
+
+    currentLabel++;
+  }
+
+  // Zero out everything except the largest component
+  if (bestLabel !== 0) {
+    for (let i = 0; i < total; i++) {
+      if (labels[i] !== bestLabel) {
+        data[i] = 0;
+      }
+    }
+  }
+};
+
 const VolumeViewer: React.FC<VolumeViewerProps> = ({ 
   volumes, 
   threshold, 
@@ -36,7 +139,8 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
   slices,
   cutPlane,
   preset,
-  renderQuality = RenderQuality.HIGH
+  renderQuality = RenderQuality.HIGH,
+  isolateBrain = false
 }) => {
   // Use first visible volume as primary
   const primaryVolume = volumes.find(v => v.metadata.visible) || volumes[0];
@@ -97,6 +201,14 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
 
     for (let i = 0; i < count; i++) {
         floatData[i] = (rawData[i] - min) / range;
+    }
+
+    // When brain isolation is enabled, aggressively remove all but the largest
+    // connected structure above a mid–high intensity threshold. This keeps the
+    // central brain mass and discards small speckles and outer trash.
+    if (isolateBrain) {
+      const isoThreshold = 0.4;
+      keepLargestComponent(floatData, xDim, yDim, zDim, isoThreshold);
     }
 
     // --- Volume Box ---
@@ -540,7 +652,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       texture.dispose();
       renderer.dispose();
     };
-  }, [primaryVolume, autoRotate]);
+  }, [primaryVolume, autoRotate, isolateBrain]);
 
   // Keyboard event listener for spacebar to toggle rotation
   useEffect(() => {

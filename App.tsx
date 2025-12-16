@@ -427,6 +427,7 @@ const App: React.FC = () => {
                                     cutPlane={cutPlane}
                                     preset={tissuePreset}
                                     renderQuality={renderQuality}
+                                    isolateBrain={tissuePreset === TissuePreset.BRAIN}
                                 />
                             </div>
                         </div>
@@ -480,6 +481,7 @@ const App: React.FC = () => {
                                 cutPlane={cutPlane}
                                 preset={tissuePreset}
                                 renderQuality={renderQuality}
+                                isolateBrain={tissuePreset === TissuePreset.BRAIN}
                             />
                         </div>
                     )}
