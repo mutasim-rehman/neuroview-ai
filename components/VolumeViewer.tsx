@@ -30,9 +30,10 @@ const getQualityValue = (quality: RenderQuality): number => {
   }
 };
 
-// Keep only the largest connected component above a given threshold.
-// This is used for brain isolation to remove small floating blobs.
-const keepLargestComponent = (
+// Keep only the most central large connected component above a given threshold.
+// We bias toward components closer to the volume center so the inner brain mass
+// wins even if outer skin has more voxels.
+const keepCentralLargestComponent = (
   data: Float32Array,
   xDim: number,
   yDim: number,
@@ -44,7 +45,7 @@ const keepLargestComponent = (
   const stack = new Int32Array(total);
   let currentLabel = 1;
   let bestLabel = 0;
-  let bestSize = 0;
+  let bestScore = -Infinity;
 
   const getIndex = (x: number, y: number, z: number) => x + y * xDim + z * xDim * yDim;
 
@@ -54,6 +55,9 @@ const keepLargestComponent = (
 
     // Start a new component flood fill
     let size = 0;
+    let sumX = 0;
+    let sumY = 0;
+    let sumZ = 0;
     let sp = 0;
     stack[sp++] = idx;
     labels[idx] = currentLabel;
@@ -66,6 +70,9 @@ const keepLargestComponent = (
       const rem = cur - z * xDim * yDim;
       const y = Math.floor(rem / xDim);
       const x = rem - y * xDim;
+      sumX += x;
+      sumY += y;
+      sumZ += z;
 
       // 6-neighborhood
       if (x > 0) {
@@ -112,8 +119,19 @@ const keepLargestComponent = (
       }
     }
 
-    if (size > bestSize) {
-      bestSize = size;
+    // Compute centroid in normalized space and score by centrality.
+    const cx = (sumX / size) / Math.max(1, xDim - 1);
+    const cy = (sumY / size) / Math.max(1, yDim - 1);
+    const cz = (sumZ / size) / Math.max(1, zDim - 1);
+    const dx = cx - 0.5;
+    const dy = cy - 0.5;
+    const dz = cz - 0.5;
+    const dist2 = dx * dx + dy * dy + dz * dz;
+    // Penalize off-center blobs; small central blobs can still lose to big ones.
+    const score = size / (1 + dist2 * 8);
+
+    if (score > bestScore) {
+      bestScore = score;
       bestLabel = currentLabel;
     }
 
@@ -203,12 +221,13 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         floatData[i] = (rawData[i] - min) / range;
     }
 
-    // When brain isolation is enabled, aggressively remove all but the largest
-    // connected structure above a mid–high intensity threshold. This keeps the
+    // When brain isolation is enabled, aggressively remove all but the main
+    // central structure above a mid–high intensity threshold. This keeps the
     // central brain mass and discards small speckles and outer trash.
     if (isolateBrain) {
-      const isoThreshold = 0.4;
-      keepLargestComponent(floatData, xDim, yDim, zDim, isoThreshold);
+      // Use a conservative threshold so parenchyma survives even on lower contrast
+      const isoThreshold = Math.max(threshold, 0.3);
+      keepCentralLargestComponent(floatData, xDim, yDim, zDim, isoThreshold);
     }
 
     // --- Volume Box ---
