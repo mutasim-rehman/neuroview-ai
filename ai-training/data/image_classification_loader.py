@@ -13,6 +13,14 @@ from typing import List, Tuple, Optional
 from PIL import Image
 import torchvision.transforms as transforms
 
+# Import NIfTI loading functionality
+try:
+    import nibabel as nib
+    NIBABEL_AVAILABLE = True
+except ImportError:
+    NIBABEL_AVAILABLE = False
+    print("Warning: nibabel not available. NIfTI file support will be limited.")
+
 
 class BrainTumorImageDataset(Dataset):
     """PyTorch Dataset for brain tumor image classification."""
@@ -85,9 +93,55 @@ class BrainTumorImageDataset(Dataset):
     def __len__(self) -> int:
         return len(self.image_paths)
     
+    def _load_nifti_slice(self, filepath: str) -> Image.Image:
+        """
+        Load a NIfTI file and extract a middle slice as a 2D image.
+        
+        Args:
+            filepath: Path to .nii or .nii.gz file
+            
+        Returns:
+            PIL Image (grayscale converted to RGB)
+        """
+        if not NIBABEL_AVAILABLE:
+            raise ImportError("nibabel is required to load NIfTI files")
+        
+        # Load NIfTI volume
+        nifti_img = nib.load(filepath)
+        volume = nifti_img.get_fdata().astype(np.float32)
+        
+        # Handle different dimensions
+        if len(volume.shape) == 3:
+            # Extract middle slice along the first dimension (usually axial)
+            slice_idx = volume.shape[0] // 2
+            slice_2d = volume[slice_idx, :, :]
+        elif len(volume.shape) == 2:
+            slice_2d = volume
+        else:
+            # For 4D, take middle slice of first volume
+            slice_idx = volume.shape[0] // 2
+            slice_2d = volume[slice_idx, :, :, 0] if len(volume.shape) == 4 else volume[slice_idx, :, :]
+        
+        # Normalize to 0-255 range
+        slice_min, slice_max = slice_2d.min(), slice_2d.max()
+        if slice_max > slice_min:
+            slice_normalized = ((slice_2d - slice_min) / (slice_max - slice_min) * 255).astype(np.uint8)
+        else:
+            slice_normalized = np.zeros_like(slice_2d, dtype=np.uint8)
+        
+        # Convert to PIL Image (grayscale) and then to RGB
+        image = Image.fromarray(slice_normalized, mode='L').convert('RGB')
+        return image
+    
+    def _is_nifti_file(self, filepath: str) -> bool:
+        """Check if file is a NIfTI file."""
+        filepath_lower = filepath.lower()
+        # Check .nii.gz first to avoid false positives with .nii
+        return filepath_lower.endswith('.nii.gz') or filepath_lower.endswith('.nii')
+    
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
         """
-        Load and preprocess a single image.
+        Load and preprocess a single image (JPG, PNG, or NIfTI).
         
         Args:
             idx: Index of image to load
@@ -99,8 +153,11 @@ class BrainTumorImageDataset(Dataset):
         label = self.labels[idx]
         
         try:
-            # Load image
-            image = Image.open(image_path).convert('RGB')
+            # Load image - handle both standard images and NIfTI files
+            if self._is_nifti_file(image_path):
+                image = self._load_nifti_slice(image_path)
+            else:
+                image = Image.open(image_path).convert('RGB')
             
             # Apply transforms
             image_tensor = self.transform(image)
@@ -109,6 +166,8 @@ class BrainTumorImageDataset(Dataset):
             
         except Exception as e:
             print(f"Error loading {image_path}: {e}")
+            import traceback
+            traceback.print_exc()
             # Return zero image as fallback
             channels = 3
             image_tensor = torch.zeros((channels, self.target_size[0], self.target_size[1]), dtype=torch.float32)
@@ -129,8 +188,8 @@ def find_image_files(base_dir: str, class_folders: List[str]) -> Tuple[List[str]
     image_paths = []
     labels = []
     
-    # Supported image extensions
-    extensions = ['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.tiff', '*.tif']
+    # Supported image extensions (including NIfTI)
+    extensions = ['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.tiff', '*.tif', '*.nii', '*.nii.gz']
     
     for class_idx, class_folder in enumerate(class_folders):
         class_path = Path(base_dir) / class_folder
@@ -141,9 +200,36 @@ def find_image_files(base_dir: str, class_folders: List[str]) -> Tuple[List[str]
         
         # Find all images in this class folder
         class_images = []
-        for ext in extensions:
-            class_images.extend(glob.glob(str(class_path / ext), recursive=False))
-            class_images.extend(glob.glob(str(class_path / ext.upper()), recursive=False))
+        seen_files = set()  # Track files to avoid duplicates
+        
+        # Helper function to add files if not seen
+        def add_if_not_seen(file_list):
+            for f in file_list:
+                if f not in seen_files:
+                    seen_files.add(f)
+                    class_images.append(f)
+        
+        # Handle .nii.gz first (before .nii to avoid duplicates)
+        nii_gz_files = glob.glob(str(class_path / "**" / "*.nii.gz"), recursive=True)
+        nii_gz_files.extend(glob.glob(str(class_path / "**" / "*.NII.GZ"), recursive=True))
+        add_if_not_seen(nii_gz_files)
+        
+        # Find .nii files (but exclude those that end with .nii.gz)
+        nii_files = glob.glob(str(class_path / "**" / "*.nii"), recursive=True)
+        nii_files.extend(glob.glob(str(class_path / "**" / "*.NII"), recursive=True))
+        # Filter out .nii.gz files (case-insensitive)
+        nii_files = [f for f in nii_files if not f.lower().endswith('.nii.gz')]
+        add_if_not_seen(nii_files)
+        
+        # Handle standard image formats
+        image_exts = ['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.tiff', '*.tif']
+        for ext in image_exts:
+            # Search in root and recursively
+            files = glob.glob(str(class_path / ext), recursive=False)
+            files.extend(glob.glob(str(class_path / ext.upper()), recursive=False))
+            files.extend(glob.glob(str(class_path / "**" / ext), recursive=True))
+            files.extend(glob.glob(str(class_path / "**" / ext.upper()), recursive=True))
+            add_if_not_seen(files)
         
         if len(class_images) == 0:
             print(f"Warning: No images found in {class_path}")
