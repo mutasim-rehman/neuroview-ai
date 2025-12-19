@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
 from PIL import Image
 import torchvision.transforms as transforms
 
@@ -326,7 +326,7 @@ def create_classification_dataloaders(
     normalize: bool = True,
     use_augmentation: bool = True,
     random_seed: int = 42
-) -> Tuple[DataLoader, DataLoader, DataLoader, List[str]]:
+) -> Tuple[Optional[DataLoader], Optional[DataLoader], Optional[DataLoader], List[str]]:
     """
     Create train, validation, and test DataLoaders for classification.
     
@@ -395,33 +395,42 @@ def create_classification_dataloaders(
         is_training=False
     )
     
-    # Create data loaders
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
-        drop_last=True
-    )
+    # Create data loaders (only if datasets have samples)
+    train_loader = None
+    if len(train_dataset) > 0:
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            drop_last=True
+        )
     
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
-        drop_last=False
-    )
+    val_loader = None
+    if len(val_dataset) > 0:
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            drop_last=False
+        )
     
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
-        drop_last=False
-    )
+    test_loader = None
+    if len(test_dataset) > 0:
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            drop_last=False
+        )
+    else:
+        # If test dataset is empty, raise an error
+        raise ValueError("Test dataset is empty. At least one split must have samples.")
     
     return train_loader, val_loader, test_loader, class_names
 

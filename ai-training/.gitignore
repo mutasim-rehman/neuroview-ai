@@ -28,39 +28,113 @@ ENV/
 
 # IDE
 .vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
 *~
 
-# Jupyter
+# Jupyter Notebook outputs
 .ipynb_checkpoints/
+*.ipynb_checkpoints/
 *.ipynb
 
-# Model outputs
+# Model outputs and checkpoints
 outputs/
 checkpoints/
 logs/
+saved_models/
+saved_model/
 *.pth
 *.pt
 *.h5
+*.hdf5
 *.ckpt
+*.pb
+*.onnx
+*.tflite
+*.pkl
+*.joblib
 
-# Data
+# Training results and reports
+training_validation_results.json
+testing_results.json
+results_comparison.json
+training_validation_report.txt
+testing_report.txt
+comparison_report.txt
+classification_report.txt
+
+# Data directories (comment out if you want to track data)
 temp_extracted/
-*.nii
-*.nii.gz
-!**/test_data/*.nii*
+# Uncomment the following lines to ignore all data files
+# *.nii
+# *.nii.gz
+# *.jpg
+# *.jpeg
+# *.png
+# *.dcm
+# !**/test_data/*.nii*
+# !**/test_data/*.jpg
 
-# OS
+# Large data files
+*.npy
+*.npz
+*.mat
+
+# Dataset directories (uncomment if needed)
+# data/raw/
+# data/processed/
+# data/external/
+
+# OS files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+Desktop.ini
 
-# TensorBoard
+# TensorBoard and experiment tracking
 runs/
 events.out.tfevents.*
+mlruns/
+.mlflow/
+wandb/
 
 # Python cache
 .pytest_cache/
 .mypy_cache/
+.pytype/
 
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.cache
+.cache/
+
+# Coverage reports
+coverage/
+*.cover
+.nyc_output/
+htmlcov/
+.tox/
+
+# Temporary experiment files
+experiments/
+experiments_*/
+test_results/
+val_results/
