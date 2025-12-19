@@ -1,6 +1,17 @@
 /**
  * Service for brain health prediction using the trained AI model.
- * Connects to the Python Flask backend API for inference.
+ * 
+ * ⚠️ IMPORTANT: This service ONLY communicates with the backend API via HTTP.
+ * The frontend has NO direct access to the model files, PyTorch, or any backend code.
+ * All model inference happens on the backend server.
+ * 
+ * Architecture:
+ * - Frontend (React/TypeScript) → HTTP API calls → Backend (Python/Flask) → Model Inference
+ * 
+ * This ensures complete separation between frontend and backend, allowing:
+ * - Independent deployment (frontend on Vercel, backend on Render)
+ * - No model files in frontend bundle
+ * - Backend can be updated without frontend changes
  */
 
 export interface BrainHealthPrediction {
@@ -16,6 +27,15 @@ export interface BrainHealthPrediction {
   error?: string;
 }
 
+/**
+ * API Base URL - configured via environment variable.
+ * 
+ * For local development: http://localhost:5000
+ * For production: Set VITE_API_URL in Vercel environment variables
+ * 
+ * This ensures the frontend connects to the deployed backend API,
+ * not to any local model files or code.
+ */
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 /**

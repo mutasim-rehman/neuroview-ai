@@ -7,6 +7,8 @@ import FileUpload from './components/FileUpload';
 import HistogramPanel from './components/HistogramPanel';
 import BrainHealthPanel from './components/BrainHealthPanel';
 import TransferFunctionEditor from './components/TransferFunctionEditor';
+// ⚠️ IMPORTANT: All model access is through API only - no direct model imports
+// The brainHealthService only makes HTTP calls to the backend API
 import { predictFromVolumeData, checkApiHealth, BrainHealthPrediction } from './services/brainHealthService';
 import { 
   Activity, Layers, Sliders, Info, AlertTriangle, 

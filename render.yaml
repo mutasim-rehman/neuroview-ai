@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: neuroview-ai-api
+    runtime: python
+    plan: starter
+    buildCommand: cd ai-training && pip install -r requirements.txt
+    startCommand: cd ai-training && gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --worker-class sync api_server:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10
+      - key: PORT
+        value: 10000
+    healthCheckPath: /health
+

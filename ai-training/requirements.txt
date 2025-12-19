@@ -16,3 +16,4 @@ numba>=0.57.0
 # API Server dependencies
 flask>=2.3.0
 flask-cors>=4.0.0
+gunicorn>=21.2.0

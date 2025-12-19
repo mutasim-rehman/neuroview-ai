@@ -19,7 +19,21 @@ This repository contains two main sub-projects:
 1. **Web Visualization Platform** (React/TypeScript) - Medical imaging viewer and visualization tools
 2. **AI Training Pipeline** (`ai-training/`) - Deep learning model training for brain scan analysis
 
-These are kept separate for now but can be integrated later.
+### Architecture
+
+**⚠️ Important:** The frontend and backend are **completely decoupled** and communicate only through HTTP API calls:
+
+- **Frontend** (Vercel): React/TypeScript app with **zero direct model access**
+- **Backend** (Render): Python Flask API that handles all model inference
+- **Communication**: REST API only - no shared code or direct imports
+
+This allows:
+- ✅ Independent deployment (frontend on Vercel, backend on Render)
+- ✅ No model files in frontend bundle
+- ✅ Backend can be updated without frontend changes
+- ✅ Complete separation of concerns
+
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for detailed architecture documentation.
 
 ## Overview
 
