@@ -20,8 +20,7 @@ build/
 .env.development
 
 # Logs
-logs/
-*.log
+# *.log (removed for model deployment)
 
 # Python
 __pycache__/
@@ -33,10 +32,6 @@ __pycache__/
 *.egg
 .pytest_cache/
 .mypy_cache/
-*.pth
-*.pt
-*.h5
-*.ckpt
 
 # Virtual environments
 venv/
@@ -44,14 +39,6 @@ env/
 ENV/
 .venv/
 virtualenv/
-
-# Model checkpoints and outputs
-checkpoints/
-outputs/
-*.pth
-*.pt
-*.h5
-*.ckpt
 
 # TensorBoard
 runs/

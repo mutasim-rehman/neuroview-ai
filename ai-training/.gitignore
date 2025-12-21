@@ -42,32 +42,6 @@ ENV/
 *.ipynb_checkpoints/
 *.ipynb
 
-# Model outputs and checkpoints
-outputs/
-checkpoints/
-logs/
-saved_models/
-saved_model/
-*.pth
-*.pt
-*.h5
-*.hdf5
-*.ckpt
-*.pb
-*.onnx
-*.tflite
-*.pkl
-*.joblib
-
-# Training results and reports
-training_validation_results.json
-testing_results.json
-results_comparison.json
-training_validation_report.txt
-testing_report.txt
-comparison_report.txt
-classification_report.txt
-
 # Data directories (comment out if you want to track data)
 temp_extracted/
 # Uncomment the following lines to ignore all data files
