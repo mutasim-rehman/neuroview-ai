@@ -1,0 +1,45 @@
+2025-12-19 03:24:17 - brain_tumor_testing - INFO - ============================================================
+2025-12-19 03:24:17 - brain_tumor_testing - INFO - Starting Brain Tumor Classification Testing
+2025-12-19 03:24:17 - brain_tumor_testing - INFO - ============================================================
+2025-12-19 03:24:17 - brain_tumor_testing - INFO - Testing data directory: D:\Medical Imagining (CT scan, MRI, X-ray, and Microscopic Imagery) Data\Medical Imagining (CT scan, MRI, X-ray, and Microscopic Imagery) Data\Medical Imagining\Brain Tumor Classification\Testing
+2025-12-19 03:24:17 - brain_tumor_testing - INFO - Classes: ['glioma', 'meningioma', 'notumor', 'pituitary']
+2025-12-19 03:24:17 - brain_tumor_testing - INFO - Model path: ./checkpoints\best_model.pth
+2025-12-19 03:24:17 - brain_tumor_testing - INFO - Model type: custom
+2025-12-19 03:24:17 - brain_tumor_testing - INFO - Batch size: 32
+2025-12-19 03:24:17 - brain_tumor_testing - INFO - Creating test data loader...
+2025-12-19 03:24:17 - brain_tumor_testing - INFO - Testing data path: D:\Medical Imagining (CT scan, MRI, X-ray, and Microscopic Imagery) Data\Medical Imagining (CT scan, MRI, X-ray, and Microscopic Imagery) Data\Medical Imagining\Brain Tumor Classification\Testing
+2025-12-19 03:24:18 - brain_tumor_testing - INFO - Test data loader created successfully
+2025-12-19 03:24:18 - brain_tumor_testing - INFO -   Test batches: 41
+2025-12-19 03:24:18 - brain_tumor_testing - INFO -   Class names: ['glioma', 'meningioma', 'notumor', 'pituitary']
+2025-12-19 03:24:18 - brain_tumor_testing - INFO - Creating model...
+2025-12-19 03:24:18 - brain_tumor_testing - INFO - Model created: 8,134,980 parameters
+2025-12-19 03:24:18 - brain_tumor_testing - INFO - Number of classes: 4
+2025-12-19 03:24:18 - brain_tumor_testing - INFO - Loading trained model from: ./checkpoints\best_model.pth
+2025-12-19 03:24:18 - brain_tumor_testing - INFO - Model loaded successfully
+2025-12-19 03:24:18 - brain_tumor_testing - INFO -   Trained for 47 epochs
+2025-12-19 03:24:18 - brain_tumor_testing - INFO -   Validation loss: 0.20074876632403443
+2025-12-19 03:24:18 - brain_tumor_testing - INFO - Running evaluation on test set...
+2025-12-19 03:24:50 - brain_tumor_testing - INFO - 
+Detailed Classification Report (Testing Set):
+2025-12-19 03:24:50 - brain_tumor_testing - INFO -               precision    recall  f1-score   support
+
+      glioma       0.96      0.85      0.90       300
+  meningioma       0.82      0.84      0.83       306
+     notumor       0.94      0.98      0.96       405
+   pituitary       0.93      0.96      0.94       300
+
+    accuracy                           0.91      1311
+   macro avg       0.91      0.91      0.91      1311
+weighted avg       0.91      0.91      0.91      1311
+
+2025-12-19 03:24:50 - brain_tumor_testing - INFO - Test results saved to ./outputs\testing_results.json
+2025-12-19 03:24:50 - brain_tumor_testing - INFO - Classification report saved to ./outputs\testing_report.txt
+2025-12-19 03:24:50 - brain_tumor_testing - INFO - ============================================================
+2025-12-19 03:24:50 - brain_tumor_testing - INFO - Testing pipeline completed successfully!
+2025-12-19 03:24:50 - brain_tumor_testing - INFO - ============================================================
+2025-12-19 03:24:50 - brain_tumor_testing - INFO - 
+Test Set Performance:
+2025-12-19 03:24:50 - brain_tumor_testing - INFO -   Accuracy: 0.9115
+2025-12-19 03:24:50 - brain_tumor_testing - INFO -   Precision: 0.9112
+2025-12-19 03:24:50 - brain_tumor_testing - INFO -   Recall: 0.9061
+2025-12-19 03:24:50 - brain_tumor_testing - INFO -   F1-Score: 0.9075

@@ -1,0 +1,53 @@
+2025-12-18 13:59:53 - brain_tumor_training - INFO - ============================================================
+2025-12-18 13:59:53 - brain_tumor_training - INFO - Starting Brain Tumor Classification Training
+2025-12-18 13:59:53 - brain_tumor_training - INFO - ============================================================
+2025-12-18 13:59:53 - brain_tumor_training - INFO - Training data directory: D:\Medical Imagining (CT scan, MRI, X-ray, and Microscopic Imagery) Data\Medical Imagining (CT scan, MRI, X-ray, and Microscopic Imagery) Data\Medical Imagining\Brain Tumor Classification\Training
+2025-12-18 13:59:53 - brain_tumor_training - INFO - Classes: ['glioma', 'meningioma', 'notumor', 'pituitary']
+2025-12-18 13:59:53 - brain_tumor_training - INFO - Train/Validation split: 85% / 15%
+2025-12-18 13:59:53 - brain_tumor_training - INFO - Model type: custom
+2025-12-18 13:59:53 - brain_tumor_training - INFO - Using pretrained: False
+2025-12-18 13:59:53 - brain_tumor_training - INFO - Epochs: 50
+2025-12-18 13:59:53 - brain_tumor_training - INFO - Batch size: 32
+2025-12-18 13:59:53 - brain_tumor_training - INFO - Configuration saved to ./outputs
+2025-12-18 13:59:53 - brain_tumor_training - INFO - Creating data loaders...
+2025-12-18 13:59:53 - brain_tumor_training - INFO - Training data path: D:\Medical Imagining (CT scan, MRI, X-ray, and Microscopic Imagery) Data\Medical Imagining (CT scan, MRI, X-ray, and Microscopic Imagery) Data\Medical Imagining\Brain Tumor Classification\Training
+2025-12-18 13:59:53 - brain_tumor_training - INFO - Data loaders created successfully
+2025-12-18 13:59:53 - brain_tumor_training - INFO -   Training batches: 151
+2025-12-18 13:59:53 - brain_tumor_training - INFO -   Validation batches: 27
+2025-12-18 13:59:53 - brain_tumor_training - INFO -   Class names: ['glioma', 'meningioma', 'notumor', 'pituitary']
+2025-12-18 13:59:53 - brain_tumor_training - INFO - Creating model...
+2025-12-18 13:59:54 - brain_tumor_training - INFO - Model created: 8,134,980 parameters
+2025-12-18 13:59:54 - brain_tumor_training - INFO - Number of classes: 4
+2025-12-18 13:59:54 - brain_tumor_training - INFO - Initializing trainer...
+2025-12-18 13:59:54 - brain_tumor_training - INFO - Starting training for 50 epochs...
+2025-12-18 16:16:43 - brain_tumor_training - INFO - Loading best model for final evaluation on validation set...
+2025-12-18 16:16:43 - brain_tumor_training - INFO - Best model loaded from epoch 48
+2025-12-18 16:16:43 - brain_tumor_training - INFO - Best validation loss: 0.20074876632403443
+2025-12-18 16:16:43 - brain_tumor_training - INFO - Running final evaluation on validation set (15% split)...
+2025-12-18 16:16:54 - brain_tumor_training - INFO - 
+Detailed Classification Report (Validation Set - 15%):
+2025-12-18 16:16:54 - brain_tumor_training - INFO -               precision    recall  f1-score   support
+
+      glioma       0.98      0.87      0.92       198
+  meningioma       0.84      0.94      0.88       200
+     notumor       0.98      0.97      0.97       239
+   pituitary       0.94      0.94      0.94       218
+
+    accuracy                           0.93       855
+   macro avg       0.93      0.93      0.93       855
+weighted avg       0.94      0.93      0.93       855
+
+2025-12-18 16:16:54 - brain_tumor_training - INFO - Validation results saved to ./outputs\training_validation_results.json
+2025-12-18 16:16:54 - brain_tumor_training - INFO - Classification report saved to ./outputs\training_validation_report.txt
+2025-12-18 16:16:54 - brain_tumor_training - INFO - ============================================================
+2025-12-18 16:16:54 - brain_tumor_training - INFO - Training pipeline completed successfully!
+2025-12-18 16:16:54 - brain_tumor_training - INFO - ============================================================
+2025-12-18 16:16:54 - brain_tumor_training - INFO - Best model saved to: ./checkpoints\best_model.pth
+2025-12-18 16:16:54 - brain_tumor_training - INFO - Logs saved to: ./logs
+2025-12-18 16:16:54 - brain_tumor_training - INFO - Outputs saved to: ./outputs
+2025-12-18 16:16:54 - brain_tumor_training - INFO - 
+Validation Set Performance (15% split):
+2025-12-18 16:16:54 - brain_tumor_training - INFO -   Accuracy: 0.9310
+2025-12-18 16:16:54 - brain_tumor_training - INFO -   Precision: 0.9330
+2025-12-18 16:16:54 - brain_tumor_training - INFO -   Recall: 0.9289
+2025-12-18 16:16:54 - brain_tumor_training - INFO -   F1-Score: 0.9293

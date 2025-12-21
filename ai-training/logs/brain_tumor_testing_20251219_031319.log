@@ -1,0 +1,36 @@
+2025-12-19 03:13:19 - brain_tumor_testing - INFO - ============================================================
+2025-12-19 03:13:19 - brain_tumor_testing - INFO - Starting Brain Tumor Classification Testing
+2025-12-19 03:13:19 - brain_tumor_testing - INFO - ============================================================
+2025-12-19 03:13:19 - brain_tumor_testing - INFO - Testing data directory: D:\Medical Imagining (CT scan, MRI, X-ray, and Microscopic Imagery) Data\Medical Imagining (CT scan, MRI, X-ray, and Microscopic Imagery) Data\Medical Imagining\Brain Tumor Classification\Testing
+2025-12-19 03:13:19 - brain_tumor_testing - INFO - Classes: ['glioma', 'meningioma', 'notumor', 'pituitary']
+2025-12-19 03:13:19 - brain_tumor_testing - INFO - Model path: ./checkpoints\best_model.pth
+2025-12-19 03:13:19 - brain_tumor_testing - INFO - Model type: custom
+2025-12-19 03:13:19 - brain_tumor_testing - INFO - Batch size: 32
+2025-12-19 03:13:19 - brain_tumor_testing - INFO - Creating test data loader...
+2025-12-19 03:13:19 - brain_tumor_testing - INFO - Testing data path: D:\Medical Imagining (CT scan, MRI, X-ray, and Microscopic Imagery) Data\Medical Imagining (CT scan, MRI, X-ray, and Microscopic Imagery) Data\Medical Imagining\Brain Tumor Classification\Testing
+2025-12-19 03:13:19 - brain_tumor_testing - ERROR - Failed to create test data loader: num_samples should be a positive integer value, but got num_samples=0
+2025-12-19 03:13:19 - brain_tumor_testing - ERROR - Traceback (most recent call last):
+  File "E:\neuroview-ai\ai-training\main_test.py", line 97, in main
+    _, _, test_loader, class_names = create_classification_dataloaders(
+                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        base_dir=TESTING_BASE_DIR,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+        random_seed=config.RANDOM_SEED
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "E:\neuroview-ai\ai-training\data\image_classification_loader.py", line 399, in create_classification_dataloaders
+    train_loader = DataLoader(
+        train_dataset,
+    ...<4 lines>...
+        drop_last=True
+    )
+  File "C:\Users\Victus\AppData\Local\Programs\Python\Python313\Lib\site-packages\torch\utils\data\dataloader.py", line 388, in __init__
+    sampler = RandomSampler(dataset, generator=generator)  # type: ignore[arg-type]
+  File "C:\Users\Victus\AppData\Local\Programs\Python\Python313\Lib\site-packages\torch\utils\data\sampler.py", line 162, in __init__
+    raise ValueError(
+        f"num_samples should be a positive integer value, but got num_samples={self.num_samples}"
+    )
+ValueError: num_samples should be a positive integer value, but got num_samples=0
+

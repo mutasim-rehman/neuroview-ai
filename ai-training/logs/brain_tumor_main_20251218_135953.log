@@ -1,0 +1,45 @@
+2025-12-18 13:59:53 - brain_tumor_main - INFO - ============================================================
+2025-12-18 13:59:53 - brain_tumor_main - INFO - BRAIN TUMOR CLASSIFICATION - MAIN PIPELINE
+2025-12-18 13:59:53 - brain_tumor_main - INFO - ============================================================
+2025-12-18 13:59:53 - brain_tumor_main - INFO - Started at: 2025-12-18 13:59:53
+
+2025-12-18 13:59:53 - brain_tumor_main - INFO - ============================================================
+2025-12-18 13:59:53 - brain_tumor_main - INFO - STEP 1: TRAINING MODEL
+2025-12-18 13:59:53 - brain_tumor_main - INFO - ============================================================
+2025-12-18 13:59:53 - brain_tumor_main - INFO - Training model on training data with 85/15 split...
+2025-12-18 13:59:53 - brain_tumor_main - INFO - (85% for training, 15% for validation)
+
+2025-12-18 16:16:54 - brain_tumor_main - INFO - Best model saved at: ./checkpoints\best_model.pth
+
+2025-12-18 16:16:54 - brain_tumor_main - INFO - ============================================================
+2025-12-18 16:16:54 - brain_tumor_main - INFO - STEP 2: TESTING MODEL
+2025-12-18 16:16:54 - brain_tumor_main - INFO - ============================================================
+2025-12-18 16:16:54 - brain_tumor_main - INFO - Testing model on separate testing dataset...
+
+2025-12-18 16:16:54 - brain_tumor_main - ERROR - Traceback (most recent call last):
+  File "E:\neuroview-ai\ai-training\main.py", line 248, in main
+    test_metrics = test_main(model_path=best_model_path)
+  File "E:\neuroview-ai\ai-training\main_test.py", line 97, in main
+    _, _, test_loader, class_names = create_classification_dataloaders(
+                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        base_dir=TESTING_BASE_DIR,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+        random_seed=config.RANDOM_SEED
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "E:\neuroview-ai\ai-training\data\image_classification_loader.py", line 399, in create_classification_dataloaders
+    train_loader = DataLoader(
+        train_dataset,
+    ...<4 lines>...
+        drop_last=True
+    )
+  File "C:\Users\Victus\AppData\Local\Programs\Python\Python313\Lib\site-packages\torch\utils\data\dataloader.py", line 388, in __init__
+    sampler = RandomSampler(dataset, generator=generator)  # type: ignore[arg-type]
+  File "C:\Users\Victus\AppData\Local\Programs\Python\Python313\Lib\site-packages\torch\utils\data\sampler.py", line 162, in __init__
+    raise ValueError(
+        f"num_samples should be a positive integer value, but got num_samples={self.num_samples}"
+    )
+ValueError: num_samples should be a positive integer value, but got num_samples=0
+

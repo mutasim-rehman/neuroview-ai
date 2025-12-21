@@ -1,0 +1,15 @@
+Brain Tumor Classification Report - Training Validation Set (15%)
+============================================================
+
+Classes: glioma, meningioma, notumor, pituitary
+
+              precision    recall  f1-score   support
+
+      glioma       0.98      0.87      0.92       198
+  meningioma       0.84      0.94      0.88       200
+     notumor       0.98      0.97      0.97       239
+   pituitary       0.94      0.94      0.94       218
+
+    accuracy                           0.93       855
+   macro avg       0.93      0.93      0.93       855
+weighted avg       0.94      0.93      0.93       855
