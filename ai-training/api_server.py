@@ -36,6 +36,25 @@ model = None
 device = None
 
 
+@app.route('/', methods=['GET'])
+def index():
+    """
+    Root endpoint.
+    
+    This API is not meant to serve a web page, only JSON endpoints for the
+    NeuroView AI frontend and other clients.
+    """
+    return jsonify({
+        "message": "NeuroView AI Brain Health Prediction API",
+        "endpoints": {
+            "health": "/health",
+            "predict": "/predict",
+            "predict_from_array": "/predict_from_array"
+        },
+        "status": "ok"
+    }), 200
+
+
 def load_model():
     """Load the trained model from checkpoint."""
     global model, device
