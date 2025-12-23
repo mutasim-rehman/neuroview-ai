@@ -35,15 +35,6 @@ CORS(app)  # Enable CORS for frontend
 model = None
 device = None
 
-# Load model when app starts (works with both direct run and gunicorn)
-print("Initializing API server...")
-print("Loading model...")
-if load_model():
-    print("Model loaded successfully!")
-else:
-    print("Warning: Model failed to load. Predictions will fail.")
-    print("Please ensure best_model.pth exists in ./checkpoints/ directory")
-
 
 @app.route('/', methods=['GET'])
 def index():
@@ -97,6 +88,16 @@ def load_model():
         print(f"Error loading model: {e}")
         traceback.print_exc()
         return False
+
+
+# Load model when app starts (works with both direct run and gunicorn)
+print("Initializing API server...")
+print("Loading model...")
+if load_model():
+    print("Model loaded successfully!")
+else:
+    print("Warning: Model failed to load. Predictions will fail.")
+    print("Please ensure best_model.pth exists in ./checkpoints/ directory")
 
 
 def calculate_reconstruction_error(reconstructed, original):
