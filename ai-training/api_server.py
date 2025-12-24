@@ -110,22 +110,39 @@ def volume_to_2d_image(volume: np.ndarray) -> Image.Image:
     Convert 3D volume to 2D image slice for classification.
     
     Args:
-        volume: 3D numpy array (D, H, W)
+        volume: 3D numpy array (D, H, W) or (H, W, D) or other shapes
         
     Returns:
-        PIL Image (RGB, 224x224)
+        PIL Image (RGB)
     """
+    print(f"Volume shape: {volume.shape}, dtype: {volume.dtype}")
+    
     # Handle different dimensions
     if len(volume.shape) == 3:
-        # Extract middle slice along the first dimension (usually axial)
-        slice_idx = volume.shape[0] // 2
-        slice_2d = volume[slice_idx, :, :]
+        # Extract middle slice - try different dimensions
+        # NIfTI files can have different axis orders
+        # Try to find the largest dimension and slice along it
+        dims = volume.shape
+        max_dim_idx = np.argmax(dims)
+        slice_idx = dims[max_dim_idx] // 2
+        
+        if max_dim_idx == 0:
+            slice_2d = volume[slice_idx, :, :]
+        elif max_dim_idx == 1:
+            slice_2d = volume[:, slice_idx, :]
+        else:
+            slice_2d = volume[:, :, slice_idx]
+            
     elif len(volume.shape) == 2:
         slice_2d = volume
-    else:
+    elif len(volume.shape) == 4:
         # For 4D, take middle slice of first volume
         slice_idx = volume.shape[0] // 2
-        slice_2d = volume[slice_idx, :, :, 0] if len(volume.shape) == 4 else volume[slice_idx, :, :]
+        slice_2d = volume[slice_idx, :, :, 0]
+    else:
+        raise ValueError(f"Unsupported volume shape: {volume.shape}")
+    
+    print(f"Extracted 2D slice shape: {slice_2d.shape}")
     
     # Normalize to 0-255 range
     slice_min, slice_max = slice_2d.min(), slice_2d.max()
@@ -136,6 +153,7 @@ def volume_to_2d_image(volume: np.ndarray) -> Image.Image:
     
     # Convert to PIL Image (grayscale) and then to RGB
     image = Image.fromarray(slice_normalized, mode='L').convert('RGB')
+    print(f"Final image size: {image.size}, mode: {image.mode}")
     return image
 
 
@@ -248,15 +266,23 @@ def predict():
             if file.filename == '':
                 return jsonify({'error': 'No file provided'}), 400
             
-            # Save to temporary file
-            temp_path = f"/tmp/{file.filename}"
-            file.save(temp_path)
+            # Save to temporary file (use tempfile for cross-platform compatibility)
+            import tempfile
+            temp_dir = tempfile.gettempdir()
+            temp_path = os.path.join(temp_dir, f"nifti_{os.urandom(8).hex()}.nii")
             
-            # Load NIfTI file
-            volume, header = load_nifti(temp_path)
-            
-            # Clean up temp file
-            os.remove(temp_path)
+            try:
+                file.save(temp_path)
+                
+                # Load NIfTI file
+                volume, header = load_nifti(temp_path)
+            finally:
+                # Clean up temp file
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except:
+                        pass
             
         elif 'volume_data' in request.json:
             # Accept base64 encoded volume data
@@ -277,21 +303,29 @@ def predict():
             return jsonify({'error': 'No file or volume_data provided'}), 400
         
         # Convert 3D volume to 2D image slice
+        print(f"Converting 3D volume (shape: {volume.shape}) to 2D image...")
         image = volume_to_2d_image(volume)
+        print(f"Image converted, size: {image.size}")
         
         # Preprocess image for classification
+        print("Preprocessing image for classification...")
         image_tensor = preprocess_image_for_classification(image)
+        print(f"Image tensor shape: {image_tensor.shape}")
         
         # Run prediction
+        print("Running prediction...")
         result = predict_disease(image_tensor)
+        print(f"Prediction result: {result}")
         
         return jsonify(result)
         
     except Exception as e:
-        print(f"Error in /predict endpoint: {e}")
+        error_msg = f'Prediction failed: {str(e)}'
+        print(f"Error in /predict endpoint: {error_msg}")
         traceback.print_exc()
         return jsonify({
-            'error': f'Prediction failed: {str(e)}'
+            'error': error_msg,
+            'traceback': traceback.format_exc() if os.environ.get('DEBUG', 'False') == 'True' else None
         }), 500
 
 
