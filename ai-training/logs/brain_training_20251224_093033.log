@@ -1,0 +1,13 @@
+2025-12-24 09:30:33 - brain_training - INFO - ============================================================
+2025-12-24 09:30:33 - brain_training - INFO - Starting Brain Scan Training Pipeline
+2025-12-24 09:30:33 - brain_training - INFO - ============================================================
+2025-12-24 09:30:33 - brain_training - INFO - Configuration saved to ./outputs
+2025-12-24 09:30:33 - brain_training - INFO - Creating data loaders...
+2025-12-24 09:30:33 - brain_training - INFO - Dataset path: D:\IXI-T1
+2025-12-24 09:30:33 - brain_training - INFO - Data loaders created successfully
+2025-12-24 09:30:33 - brain_training - INFO -   Training batches: 408
+2025-12-24 09:30:33 - brain_training - INFO -   Test batches: 175
+2025-12-24 09:30:33 - brain_training - INFO - Creating model...
+2025-12-24 09:30:33 - brain_training - INFO - Model created: 10,328,113 parameters
+2025-12-24 09:30:33 - brain_training - INFO - Initializing trainer...
+2025-12-24 09:30:37 - brain_training - INFO - Starting training for 1 epochs...
