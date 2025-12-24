@@ -10,7 +10,7 @@
   "NORMALIZE": "True",
   "CLIP_PERCENTILE": "(0.5, 99.5)",
   "BATCH_SIZE": "1",
-  "NUM_EPOCHS": "1",
+  "NUM_EPOCHS": "50",
   "LEARNING_RATE": "0.0001",
   "WEIGHT_DECAY": "1e-05",
   "MODEL_TYPE": "3dcnn",
