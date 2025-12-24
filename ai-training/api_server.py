@@ -1,6 +1,6 @@
 """
 Flask API server for brain scan inference.
-Provides endpoint to predict if a brain scan is healthy or has defects.
+Provides endpoint to classify brain tumors into specific disease types.
 """
 
 import os
@@ -9,23 +9,20 @@ import io
 import base64
 import numpy as np
 import torch
+import torch.nn.functional as F
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from pathlib import Path
 import traceback
+from PIL import Image
+import torchvision.transforms as transforms
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config.config import config
-from models.brain_model import create_model
-from data.preprocessing import (
-    load_nifti, 
-    preprocess_volume, 
-    normalize_intensity,
-    resize_volume,
-    volume_to_tensor
-)
+from models.classification_model import create_classification_model
+from data.preprocessing import load_nifti
 import nibabel as nib
 
 app = Flask(__name__)
@@ -34,6 +31,10 @@ CORS(app)  # Enable CORS for frontend
 # Global variables for model
 model = None
 device = None
+
+# Disease class names (must match training order)
+CLASS_NAMES = ['glioma', 'meningioma', 'notumor', 'pituitary']
+NUM_CLASSES = len(CLASS_NAMES)
 
 
 @app.route('/', methods=['GET'])
@@ -45,28 +46,31 @@ def index():
     NeuroView AI frontend and other clients.
     """
     return jsonify({
-        "message": "NeuroView AI Brain Health Prediction API",
+        "message": "NeuroView AI Brain Tumor Classification API",
         "endpoints": {
             "health": "/health",
             "predict": "/predict",
             "predict_from_array": "/predict_from_array"
         },
+        "classes": CLASS_NAMES,
         "status": "ok"
     }), 200
 
 
 def load_model():
-    """Load the trained model from checkpoint."""
+    """Load the trained classification model from checkpoint."""
     global model, device
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
-    # Create model with same architecture as training
-    model = create_model(
-        in_channels=config.IN_CHANNELS,
-        feature_dim=config.FEATURE_DIM,
-        base_channels=config.BASE_CHANNELS
+    # Create classification model with same architecture as training
+    model = create_classification_model(
+        in_channels=3,  # RGB images
+        num_classes=NUM_CLASSES,
+        base_channels=64,
+        use_pretrained=False,
+        model_type='custom'
     )
     
     # Load checkpoint
@@ -74,7 +78,7 @@ def load_model():
     
     if not os.path.exists(checkpoint_path):
         print(f"Warning: Model checkpoint not found at {checkpoint_path}")
-        print("Please train the model first using main_train_healthy.py")
+        print("Please train the model first using main_train_diseases.py")
         return False
     
     try:
@@ -82,7 +86,8 @@ def load_model():
         model.load_state_dict(checkpoint['model_state_dict'])
         model.to(device)
         model.eval()  # Set to evaluation mode
-        print(f"Model loaded successfully from {checkpoint_path}")
+        print(f"Classification model loaded successfully from {checkpoint_path}")
+        print(f"Classes: {CLASS_NAMES}")
         return True
     except Exception as e:
         print(f"Error loading model: {e}")
@@ -100,36 +105,69 @@ else:
     print("Please ensure best_model.pth exists in ./checkpoints/ directory")
 
 
-def calculate_reconstruction_error(reconstructed, original):
+def volume_to_2d_image(volume: np.ndarray) -> Image.Image:
     """
-    Calculate reconstruction error to detect anomalies.
-    Healthy scans should have low reconstruction error,
-    while scans with defects should have higher error.
-    """
-    # Mean Squared Error
-    mse = torch.mean((reconstructed - original) ** 2)
-    
-    # Mean Absolute Error
-    mae = torch.mean(torch.abs(reconstructed - original))
-    
-    # Calculate per-voxel error
-    error_map = torch.abs(reconstructed - original)
-    max_error = torch.max(error_map)
-    
-    return {
-        'mse': float(mse.item()),
-        'mae': float(mae.item()),
-        'max_error': float(max_error.item())
-    }
-
-
-def predict_health(volume_tensor, threshold_percentile=95.0):
-    """
-    Predict if brain scan is healthy or has defects.
+    Convert 3D volume to 2D image slice for classification.
     
     Args:
-        volume_tensor: Preprocessed volume tensor (1, 1, D, H, W)
-        threshold_percentile: Percentile threshold for anomaly detection
+        volume: 3D numpy array (D, H, W)
+        
+    Returns:
+        PIL Image (RGB, 224x224)
+    """
+    # Handle different dimensions
+    if len(volume.shape) == 3:
+        # Extract middle slice along the first dimension (usually axial)
+        slice_idx = volume.shape[0] // 2
+        slice_2d = volume[slice_idx, :, :]
+    elif len(volume.shape) == 2:
+        slice_2d = volume
+    else:
+        # For 4D, take middle slice of first volume
+        slice_idx = volume.shape[0] // 2
+        slice_2d = volume[slice_idx, :, :, 0] if len(volume.shape) == 4 else volume[slice_idx, :, :]
+    
+    # Normalize to 0-255 range
+    slice_min, slice_max = slice_2d.min(), slice_2d.max()
+    if slice_max > slice_min:
+        slice_normalized = ((slice_2d - slice_min) / (slice_max - slice_min) * 255).astype(np.uint8)
+    else:
+        slice_normalized = np.zeros_like(slice_2d, dtype=np.uint8)
+    
+    # Convert to PIL Image (grayscale) and then to RGB
+    image = Image.fromarray(slice_normalized, mode='L').convert('RGB')
+    return image
+
+
+def preprocess_image_for_classification(image: Image.Image) -> torch.Tensor:
+    """
+    Preprocess image for classification model.
+    
+    Args:
+        image: PIL Image (RGB)
+        
+    Returns:
+        Preprocessed tensor (1, 3, 224, 224)
+    """
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+        )
+    ])
+    
+    tensor = transform(image)
+    return tensor.unsqueeze(0)  # Add batch dimension
+
+
+def predict_disease(image_tensor: torch.Tensor):
+    """
+    Predict brain tumor disease type using classification model.
+    
+    Args:
+        image_tensor: Preprocessed image tensor (1, 3, 224, 224)
         
     Returns:
         Dictionary with prediction results
@@ -143,36 +181,32 @@ def predict_health(volume_tensor, threshold_percentile=95.0):
     
     try:
         # Move tensor to device
-        volume_tensor = volume_tensor.to(device)
+        image_tensor = image_tensor.to(device)
         
         # Run inference
         with torch.no_grad():
-            reconstructed, encoded_features, projected_features = model(volume_tensor)
+            logits = model(image_tensor)
+            probabilities = F.softmax(logits, dim=1)
+            predicted_class_idx = torch.argmax(probabilities, dim=1).item()
         
-        # Calculate reconstruction error
-        error_metrics = calculate_reconstruction_error(reconstructed, volume_tensor)
+        # Get probabilities for all classes
+        probs = probabilities[0].cpu().numpy()
         
-        # Use reconstruction error as anomaly score
-        # Higher error = more likely to have defects
-        anomaly_score = error_metrics['mse']
+        # Create class probabilities dictionary
+        class_probs = {
+            CLASS_NAMES[i]: float(probs[i]) 
+            for i in range(len(CLASS_NAMES))
+        }
         
-        # You can adjust this threshold based on validation results
-        # For now, use a percentile-based approach
-        # In production, this should be calibrated on validation data
-        
-        # Simple threshold: if MSE > 0.01, likely anomaly
-        # This is a heuristic - should be calibrated from validation set
-        is_healthy = anomaly_score < 0.01
-        
-        # Calculate confidence (inverse of error, normalized)
-        confidence = min(1.0, max(0.0, 1.0 - (anomaly_score * 10)))
+        # Get predicted class
+        predicted_class = CLASS_NAMES[predicted_class_idx]
+        confidence = float(probs[predicted_class_idx])
         
         return {
-            'prediction': 'healthy' if is_healthy else 'defect',
-            'confidence': float(confidence),
-            'anomaly_score': float(anomaly_score),
-            'error_metrics': error_metrics,
-            'feature_vector': encoded_features.cpu().numpy().tolist()[0] if encoded_features is not None else None
+            'prediction': predicted_class,
+            'confidence': confidence,
+            'class_probabilities': class_probs,
+            'all_classes': CLASS_NAMES
         }
         
     except Exception as e:
@@ -197,6 +231,7 @@ def health_check():
 def predict():
     """
     Predict endpoint. Accepts NIfTI file or volume data.
+    Classifies brain tumors into: glioma, meningioma, notumor, pituitary.
     
     Expected input:
     - File upload (multipart/form-data) with key 'file'
@@ -204,7 +239,7 @@ def predict():
     - JSON with base64 encoded volume data
     
     Returns:
-    - JSON with prediction results
+    - JSON with disease classification results
     """
     try:
         # Check if file is uploaded
@@ -241,21 +276,14 @@ def predict():
         else:
             return jsonify({'error': 'No file or volume_data provided'}), 400
         
-        # Preprocess volume (same as training)
-        preprocessed = preprocess_volume(
-            volume,
-            target_shape=config.TARGET_SHAPE,
-            normalize=config.NORMALIZE,
-            clip_percentile=config.CLIP_PERCENTILE,
-            augment=False  # No augmentation for inference
-        )
+        # Convert 3D volume to 2D image slice
+        image = volume_to_2d_image(volume)
         
-        # Convert to tensor
-        volume_tensor = volume_to_tensor(preprocessed, add_channel_dim=True)
-        volume_tensor = volume_tensor.unsqueeze(0)  # Add batch dimension (B, C, D, H, W)
+        # Preprocess image for classification
+        image_tensor = preprocess_image_for_classification(image)
         
         # Run prediction
-        result = predict_health(volume_tensor)
+        result = predict_disease(image_tensor)
         
         return jsonify(result)
         
@@ -287,21 +315,14 @@ def predict_from_array():
         # Convert nested lists to numpy array
         volume = np.array(data['volume'], dtype=np.float32)
         
-        # Preprocess volume
-        preprocessed = preprocess_volume(
-            volume,
-            target_shape=config.TARGET_SHAPE,
-            normalize=config.NORMALIZE,
-            clip_percentile=config.CLIP_PERCENTILE,
-            augment=False
-        )
+        # Convert 3D volume to 2D image slice
+        image = volume_to_2d_image(volume)
         
-        # Convert to tensor
-        volume_tensor = volume_to_tensor(preprocessed, add_channel_dim=True)
-        volume_tensor = volume_tensor.unsqueeze(0)
+        # Preprocess image for classification
+        image_tensor = preprocess_image_for_classification(image)
         
         # Run prediction
-        result = predict_health(volume_tensor)
+        result = predict_disease(image_tensor)
         
         return jsonify(result)
         
