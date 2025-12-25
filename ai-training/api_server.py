@@ -289,6 +289,7 @@ def predict():
     Returns:
     - JSON with disease classification results
     """
+    temp_path = None
     try:
         logger.info("Received prediction request")
         sys.stdout.flush()
@@ -319,22 +320,23 @@ def predict():
                 logger.info("Loading NIfTI file...")
                 sys.stdout.flush()
                 volume, header = load_nifti(temp_path)
-                logger.info(f"NIfTI loaded, volume shape: {volume.shape}")
+                logger.info(f"NIfTI loaded, volume shape: {volume.shape}, dtype: {volume.dtype}")
                 sys.stdout.flush()
+                
+                # Clean up temp file immediately after loading (data is in memory)
+                try:
+                    os.remove(temp_path)
+                    logger.info("Temp file cleaned up after loading")
+                    temp_path = None  # Mark as cleaned
+                except Exception as e:
+                    logger.warning(f"Could not remove temp file: {e}")
+                sys.stdout.flush()
+                
             except Exception as e:
                 logger.error(f"Error loading NIfTI file: {e}")
-                traceback.print_exc()
+                logger.error(traceback.format_exc())
                 sys.stdout.flush()
                 raise
-            finally:
-                # Clean up temp file
-                if os.path.exists(temp_path):
-                    try:
-                        os.remove(temp_path)
-                        logger.info("Temp file cleaned up")
-                    except Exception as e:
-                        logger.warning(f"Could not remove temp file: {e}")
-                    sys.stdout.flush()
             
         elif 'volume_data' in request.json:
             # Accept base64 encoded volume data
@@ -387,6 +389,15 @@ def predict():
             'error': error_msg,
             'traceback': traceback.format_exc() if os.environ.get('DEBUG', 'False') == 'True' else None
         }), 500
+    finally:
+        # Ensure temp file is cleaned up even if there was an error
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+                logger.info("Temp file cleaned up in finally block")
+            except Exception as e:
+                logger.warning(f"Could not remove temp file in finally: {e}")
+            sys.stdout.flush()
 
 
 @app.route('/predict_from_array', methods=['POST'])

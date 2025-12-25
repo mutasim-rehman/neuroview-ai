@@ -1,2 +1,2 @@
-web: cd ai-training && gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --worker-class sync api_server:app
+web: cd ai-training && gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 300 --worker-class sync --log-level info --access-logfile - --error-logfile - api_server:app
 
