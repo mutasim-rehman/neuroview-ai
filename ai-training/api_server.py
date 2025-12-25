@@ -7,6 +7,7 @@ import os
 import sys
 import io
 import base64
+import gc
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -19,6 +20,10 @@ import torchvision.transforms as transforms
 import tempfile
 import logging
 
+# Memory optimization: Set PyTorch to use less memory
+os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'max_split_size_mb:128')
+torch.set_num_threads(1)  # Limit CPU threads to reduce memory
+
 # Configure logging to ensure output is flushed
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -28,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config.config import config
 from models.classification_model import create_classification_model
-from data.preprocessing import load_nifti
+from data.preprocessing import load_nifti, load_nifti_slice
 import nibabel as nib
 
 app = Flask(__name__)
@@ -290,6 +295,7 @@ def predict():
     - JSON with disease classification results
     """
     temp_path = None
+    skip_volume_conversion = False
     try:
         logger.info("Received prediction request")
         sys.stdout.flush()
@@ -316,27 +322,50 @@ def predict():
                 logger.info(f"File saved, size: {file_size} bytes")
                 sys.stdout.flush()
                 
-                # Load NIfTI file
-                logger.info("Loading NIfTI file...")
+                # Load NIfTI file - use memory-efficient slice loading
+                logger.info("Loading NIfTI file (memory-efficient slice loading)...")
                 sys.stdout.flush()
                 try:
-                    volume, header = load_nifti(temp_path)
-                    logger.info(f"NIfTI loaded, volume shape: {volume.shape}, dtype: {volume.dtype}, memory: {volume.nbytes / 1024 / 1024:.2f} MB")
+                    # Load only a single slice instead of entire volume to save memory
+                    # This is critical for Render's 512MB RAM limit
+                    slice_2d, header = load_nifti_slice(temp_path, slice_axis=2, slice_idx=None)
+                    logger.info(f"NIfTI slice loaded, slice shape: {slice_2d.shape}, dtype: {slice_2d.dtype}, memory: {slice_2d.nbytes / 1024 / 1024:.2f} MB")
+                    logger.info(f"Original volume shape: {header.get('shape', 'unknown')}")
                     sys.stdout.flush()
+                    
+                    # Clean up temp file immediately after loading
+                    try:
+                        os.remove(temp_path)
+                        logger.info("Temp file cleaned up after loading")
+                        temp_path = None  # Mark as cleaned
+                    except Exception as e:
+                        logger.warning(f"Could not remove temp file: {e}")
+                    sys.stdout.flush()
+                    
+                    # Convert slice directly to image (skip volume_to_2d_image since we already have a 2D slice)
+                    logger.info(f"Converting 2D slice (shape: {slice_2d.shape}) to image...")
+                    sys.stdout.flush()
+                    
+                    # Normalize to 0-255 range
+                    slice_min, slice_max = slice_2d.min(), slice_2d.max()
+                    if slice_max > slice_min:
+                        slice_normalized = ((slice_2d - slice_min) / (slice_max - slice_min) * 255).astype(np.uint8)
+                    else:
+                        slice_normalized = np.zeros_like(slice_2d, dtype=np.uint8)
+                    
+                    # Convert to PIL Image (grayscale) and then to RGB
+                    image = Image.fromarray(slice_normalized, mode='L').convert('RGB')
+                    logger.info(f"Image created, size: {image.size}, mode: {image.mode}")
+                    sys.stdout.flush()
+                    
+                    # Skip volume_to_2d_image step - we already have the image
+                    skip_volume_conversion = True
+                    
                 except Exception as e:
                     logger.error(f"Failed to load NIfTI file: {e}")
                     logger.error(traceback.format_exc())
                     sys.stdout.flush()
                     raise
-                
-                # Clean up temp file immediately after loading (data is in memory)
-                try:
-                    os.remove(temp_path)
-                    logger.info("Temp file cleaned up after loading")
-                    temp_path = None  # Mark as cleaned
-                except Exception as e:
-                    logger.warning(f"Could not remove temp file: {e}")
-                sys.stdout.flush()
                 
             except Exception as e:
                 logger.error(f"Error loading NIfTI file: {e}")
@@ -362,12 +391,13 @@ def predict():
         else:
             return jsonify({'error': 'No file or volume_data provided'}), 400
         
-        # Convert 3D volume to 2D image slice
-        logger.info(f"Converting 3D volume (shape: {volume.shape}) to 2D image...")
-        sys.stdout.flush()
-        image = volume_to_2d_image(volume)
-        logger.info(f"Image converted, size: {image.size}")
-        sys.stdout.flush()
+        # Convert 3D volume to 2D image slice (only if we didn't already load a slice)
+        if not skip_volume_conversion:
+            logger.info(f"Converting 3D volume (shape: {volume.shape}) to 2D image...")
+            sys.stdout.flush()
+            image = volume_to_2d_image(volume)
+            logger.info(f"Image converted, size: {image.size}")
+            sys.stdout.flush()
         
         # Preprocess image for classification
         logger.info("Preprocessing image for classification...")
@@ -382,6 +412,16 @@ def predict():
         result = predict_disease(image_tensor)
         logger.info(f"Prediction completed: {result.get('prediction', 'unknown')}")
         sys.stdout.flush()
+        
+        # Explicit memory cleanup to prevent OOM on Render's 512MB limit
+        del image_tensor
+        if 'image' in locals():
+            del image
+        if 'volume' in locals():
+            del volume
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         
         return jsonify(result)
         

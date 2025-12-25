@@ -77,6 +77,64 @@ def load_nifti(filepath: str) -> Tuple[np.ndarray, dict]:
     return data.astype(np.float32), header
 
 
+def load_nifti_slice(filepath: str, slice_axis: int = 2, slice_idx: Optional[int] = None) -> Tuple[np.ndarray, dict]:
+    """
+    Memory-efficient: Load only a single slice from NIfTI file instead of entire volume.
+    This is much more memory-efficient for large files.
+    
+    Args:
+        filepath: Path to .nii or .nii.gz file
+        slice_axis: Which axis to slice along (0, 1, or 2)
+        slice_idx: Index of slice to extract (None = middle slice)
+        
+    Returns:
+        Tuple of (2D slice array, header metadata)
+    """
+    nifti_img = nib.load(filepath)
+    shape = nifti_img.shape
+    
+    # Determine slice index if not provided
+    if slice_idx is None:
+        slice_idx = shape[slice_axis] // 2
+    
+    # Use arrayproxy to load only the slice we need (memory efficient)
+    # The slicer returns a view that only loads the requested slice
+    if len(shape) == 3:
+        if slice_axis == 0:
+            slice_img = nifti_img.slicer[slice_idx, :, :]
+        elif slice_axis == 1:
+            slice_img = nifti_img.slicer[:, slice_idx, :]
+        else:  # slice_axis == 2
+            slice_img = nifti_img.slicer[:, :, slice_idx]
+    elif len(shape) == 2:
+        slice_img = nifti_img
+    elif len(shape) == 4:
+        # For 4D, take middle slice of first volume
+        if slice_axis == 0:
+            slice_img = nifti_img.slicer[slice_idx, :, :, 0]
+        elif slice_axis == 1:
+            slice_img = nifti_img.slicer[:, slice_idx, :, 0]
+        else:
+            slice_img = nifti_img.slicer[:, :, slice_idx, 0]
+    else:
+        raise ValueError(f"Unsupported volume shape: {shape}")
+    
+    # Get the actual data array (this only loads the slice, not the entire volume)
+    slice_array = slice_img.get_fdata().astype(np.float32)
+    
+    header = {
+        'affine': nifti_img.affine,
+        'header': nifti_img.header,
+        'shape': shape,
+        'slice_shape': slice_array.shape,
+        'slice_axis': slice_axis,
+        'slice_idx': slice_idx,
+        'pixdims': nifti_img.header.get_zooms()[:3]
+    }
+    
+    return slice_array, header
+
+
 def normalize_intensity(
     volume: np.ndarray,
     clip_percentile: Tuple[float, float] = (0.5, 99.5),
