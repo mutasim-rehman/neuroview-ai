@@ -16,6 +16,12 @@ from pathlib import Path
 import traceback
 from PIL import Image
 import torchvision.transforms as transforms
+import tempfile
+import logging
+
+# Configure logging to ensure output is flushed
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -27,6 +33,27 @@ import nibabel as nib
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for frontend
+
+# Increase max content length for large file uploads (50MB)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+
+
+@app.before_request
+def log_request_info():
+    """Log request information for debugging."""
+    logger.info(f"Request: {request.method} {request.path}")
+    logger.info(f"Content-Type: {request.content_type}")
+    if request.method == 'POST':
+        logger.info(f"Content-Length: {request.content_length}")
+    sys.stdout.flush()
+
+
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    """Handle file too large error."""
+    logger.error("File upload too large")
+    sys.stdout.flush()
+    return jsonify({'error': 'File too large. Maximum size is 50MB.'}), 413
 
 # Global variables for model
 model = None
@@ -115,7 +142,8 @@ def volume_to_2d_image(volume: np.ndarray) -> Image.Image:
     Returns:
         PIL Image (RGB)
     """
-    print(f"Volume shape: {volume.shape}, dtype: {volume.dtype}")
+    logger.info(f"Volume shape: {volume.shape}, dtype: {volume.dtype}")
+    sys.stdout.flush()
     
     # Handle different dimensions
     if len(volume.shape) == 3:
@@ -142,7 +170,8 @@ def volume_to_2d_image(volume: np.ndarray) -> Image.Image:
     else:
         raise ValueError(f"Unsupported volume shape: {volume.shape}")
     
-    print(f"Extracted 2D slice shape: {slice_2d.shape}")
+    logger.info(f"Extracted 2D slice shape: {slice_2d.shape}")
+    sys.stdout.flush()
     
     # Normalize to 0-255 range
     slice_min, slice_max = slice_2d.min(), slice_2d.max()
@@ -153,7 +182,8 @@ def volume_to_2d_image(volume: np.ndarray) -> Image.Image:
     
     # Convert to PIL Image (grayscale) and then to RGB
     image = Image.fromarray(slice_normalized, mode='L').convert('RGB')
-    print(f"Final image size: {image.size}, mode: {image.mode}")
+    logger.info(f"Final image size: {image.size}, mode: {image.mode}")
+    sys.stdout.flush()
     return image
 
 
@@ -260,29 +290,51 @@ def predict():
     - JSON with disease classification results
     """
     try:
+        logger.info("Received prediction request")
+        sys.stdout.flush()
+        
         # Check if file is uploaded
         if 'file' in request.files:
             file = request.files['file']
             if file.filename == '':
                 return jsonify({'error': 'No file provided'}), 400
             
+            logger.info(f"Processing file: {file.filename}, content_type: {file.content_type}")
+            sys.stdout.flush()
+            
             # Save to temporary file (use tempfile for cross-platform compatibility)
-            import tempfile
             temp_dir = tempfile.gettempdir()
             temp_path = os.path.join(temp_dir, f"nifti_{os.urandom(8).hex()}.nii")
             
+            logger.info(f"Saving file to: {temp_path}")
+            sys.stdout.flush()
+            
             try:
                 file.save(temp_path)
+                file_size = os.path.getsize(temp_path)
+                logger.info(f"File saved, size: {file_size} bytes")
+                sys.stdout.flush()
                 
                 # Load NIfTI file
+                logger.info("Loading NIfTI file...")
+                sys.stdout.flush()
                 volume, header = load_nifti(temp_path)
+                logger.info(f"NIfTI loaded, volume shape: {volume.shape}")
+                sys.stdout.flush()
+            except Exception as e:
+                logger.error(f"Error loading NIfTI file: {e}")
+                traceback.print_exc()
+                sys.stdout.flush()
+                raise
             finally:
                 # Clean up temp file
                 if os.path.exists(temp_path):
                     try:
                         os.remove(temp_path)
-                    except:
-                        pass
+                        logger.info("Temp file cleaned up")
+                    except Exception as e:
+                        logger.warning(f"Could not remove temp file: {e}")
+                    sys.stdout.flush()
             
         elif 'volume_data' in request.json:
             # Accept base64 encoded volume data
@@ -303,26 +355,34 @@ def predict():
             return jsonify({'error': 'No file or volume_data provided'}), 400
         
         # Convert 3D volume to 2D image slice
-        print(f"Converting 3D volume (shape: {volume.shape}) to 2D image...")
+        logger.info(f"Converting 3D volume (shape: {volume.shape}) to 2D image...")
+        sys.stdout.flush()
         image = volume_to_2d_image(volume)
-        print(f"Image converted, size: {image.size}")
+        logger.info(f"Image converted, size: {image.size}")
+        sys.stdout.flush()
         
         # Preprocess image for classification
-        print("Preprocessing image for classification...")
+        logger.info("Preprocessing image for classification...")
+        sys.stdout.flush()
         image_tensor = preprocess_image_for_classification(image)
-        print(f"Image tensor shape: {image_tensor.shape}")
+        logger.info(f"Image tensor shape: {image_tensor.shape}")
+        sys.stdout.flush()
         
         # Run prediction
-        print("Running prediction...")
+        logger.info("Running prediction...")
+        sys.stdout.flush()
         result = predict_disease(image_tensor)
-        print(f"Prediction result: {result}")
+        logger.info(f"Prediction completed: {result.get('prediction', 'unknown')}")
+        sys.stdout.flush()
         
         return jsonify(result)
         
     except Exception as e:
         error_msg = f'Prediction failed: {str(e)}'
-        print(f"Error in /predict endpoint: {error_msg}")
-        traceback.print_exc()
+        logger.error(f"Error in /predict endpoint: {error_msg}")
+        logger.error(traceback.format_exc())
+        sys.stdout.flush()
+        sys.stderr.flush()
         return jsonify({
             'error': error_msg,
             'traceback': traceback.format_exc() if os.environ.get('DEBUG', 'False') == 'True' else None
