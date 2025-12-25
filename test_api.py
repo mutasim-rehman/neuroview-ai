@@ -159,7 +159,7 @@ def predict_from_file(file_path: str) -> Optional[Dict[str, Any]]:
             response = requests.post(
                 f"{API_BASE_URL}/predict",
                 files=files,
-                timeout=120  # Longer timeout for file upload and processing
+                timeout=300  # 5 minutes timeout for large file upload and processing
             )
         
         if response.status_code == 200:
@@ -176,8 +176,9 @@ def predict_from_file(file_path: str) -> Optional[Dict[str, Any]]:
             return None
             
     except requests.exceptions.Timeout:
-        print_error("Request timed out. The file might be too large or API is slow.")
+        print_error("Request timed out after 5 minutes. The file might be too large or API is slow.")
         print_info("Try again - Render free tier can be slow on cold starts.")
+        print_info("Check Render logs for more details.")
         return None
     except Exception as e:
         print_error(f"Error during prediction: {str(e)}")
