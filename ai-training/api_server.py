@@ -42,6 +42,10 @@ CORS(app)  # Enable CORS for frontend
 # Increase max content length for large file uploads (50MB)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
+# Increase request timeout for slow connections (Render free tier)
+# This helps with large file uploads on slow connections
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
 
 @app.before_request
 def log_request_info():
@@ -298,6 +302,12 @@ def predict():
     skip_volume_conversion = False
     try:
         logger.info("Received prediction request")
+        logger.info(f"Request method: {request.method}, Content-Type: {request.content_type}")
+        logger.info(f"Content-Length: {request.content_length}")
+        sys.stdout.flush()
+        
+        # Log that we're starting to parse files (this can be slow for large uploads)
+        logger.info("Starting to parse uploaded file (this may take time for large files)...")
         sys.stdout.flush()
         
         # Check if file is uploaded
