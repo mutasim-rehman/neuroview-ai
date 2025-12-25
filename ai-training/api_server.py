@@ -319,9 +319,15 @@ def predict():
                 # Load NIfTI file
                 logger.info("Loading NIfTI file...")
                 sys.stdout.flush()
-                volume, header = load_nifti(temp_path)
-                logger.info(f"NIfTI loaded, volume shape: {volume.shape}, dtype: {volume.dtype}")
-                sys.stdout.flush()
+                try:
+                    volume, header = load_nifti(temp_path)
+                    logger.info(f"NIfTI loaded, volume shape: {volume.shape}, dtype: {volume.dtype}, memory: {volume.nbytes / 1024 / 1024:.2f} MB")
+                    sys.stdout.flush()
+                except Exception as e:
+                    logger.error(f"Failed to load NIfTI file: {e}")
+                    logger.error(traceback.format_exc())
+                    sys.stdout.flush()
+                    raise
                 
                 # Clean up temp file immediately after loading (data is in memory)
                 try:
