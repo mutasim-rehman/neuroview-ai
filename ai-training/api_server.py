@@ -65,6 +65,18 @@ def request_entity_too_large(error):
     return jsonify({'error': 'File too large. Maximum size is 50MB.'}), 413
 
 
+@app.errorhandler(405)
+def method_not_allowed(error):
+    """Handle method not allowed errors."""
+    logger.warning(f"Method not allowed: {request.method} {request.path}")
+    sys.stdout.flush()
+    return jsonify({
+        'error': 'Method not allowed',
+        'message': f'The {request.method} method is not supported for this endpoint.',
+        'allowed_methods': ['POST'] if '/predict' in request.path else []
+    }), 405
+
+
 @app.errorhandler(500)
 def internal_error(error):
     """Handle internal server errors."""
@@ -354,6 +366,18 @@ def predict():
     Returns:
     - JSON with disease classification results
     """
+    # Check HTTP method
+    if request.method != 'POST':
+        return jsonify({
+            'error': 'Method not allowed',
+            'message': 'This endpoint only accepts POST requests. Please use POST with a file upload or JSON data.',
+            'allowed_methods': ['POST'],
+            'usage': {
+                'file_upload': 'POST /predict with multipart/form-data containing a "file" field',
+                'json_data': 'POST /predict with JSON body containing "volume_data" field'
+            }
+        }), 405
+    
     temp_path = None
     skip_volume_conversion = False
     image = None
