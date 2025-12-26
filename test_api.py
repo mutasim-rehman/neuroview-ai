@@ -40,19 +40,19 @@ def print_header(text: str):
 
 def print_success(text: str):
     """Print success message."""
-    print(f"{Colors.GREEN}✓ {text}{Colors.END}")
+    print(f"{Colors.GREEN}[OK] {text}{Colors.END}")
 
 def print_error(text: str):
     """Print error message."""
-    print(f"{Colors.RED}✗ {text}{Colors.END}")
+    print(f"{Colors.RED}[FAIL] {text}{Colors.END}")
 
 def print_warning(text: str):
     """Print warning message."""
-    print(f"{Colors.YELLOW}⚠ {text}{Colors.END}")
+    print(f"{Colors.YELLOW}[WARN] {text}{Colors.END}")
 
 def print_info(text: str):
     """Print info message."""
-    print(f"{Colors.BLUE}ℹ {text}{Colors.END}")
+    print(f"{Colors.BLUE}[INFO] {text}{Colors.END}")
 
 def test_health_endpoint() -> Optional[Dict[str, Any]]:
     """

@@ -1,3 +1,4 @@
 # Model checkpoints - only best_model.pth is needed for deployment
 # Other checkpoints can be regenerated during training
 ai-training/checkpoints/best_model.pth -filter -diff -merge
+*.pth filter=lfs diff=lfs merge=lfs -text
