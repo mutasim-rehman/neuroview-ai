@@ -669,6 +669,82 @@ def debug_ping():
     }), 200
 
 
+@app.route('/debug/torch', methods=['GET'])
+def debug_torch():
+    """Test if basic PyTorch operations work."""
+    try:
+        import psutil
+        mem_before = psutil.Process().memory_info().rss / 1024 / 1024
+        
+        # Simple tensor operation
+        x = torch.randn(1, 3, 32, 32)
+        y = torch.randn(32, 10)
+        
+        # Simple matmul
+        x_flat = x.view(1, -1)[:, :32]
+        result = torch.mm(x_flat, y)
+        
+        mem_after = psutil.Process().memory_info().rss / 1024 / 1024
+        
+        del x, y, x_flat, result
+        gc.collect()
+        
+        return jsonify({
+            'status': 'ok',
+            'torch_version': torch.__version__,
+            'memory_before_mb': round(mem_before, 2),
+            'memory_after_mb': round(mem_after, 2),
+            'memory_delta_mb': round(mem_after - mem_before, 2)
+        }), 200
+    except Exception as e:
+        logger.error(f"Error in /debug/torch: {e}")
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
+@app.route('/debug/model_forward', methods=['GET'])
+def debug_model_forward():
+    """Test a single forward pass with minimal input."""
+    try:
+        if model is None:
+            return jsonify({'error': 'Model not loaded'}), 503
+        
+        import psutil
+        mem_before = psutil.Process().memory_info().rss / 1024 / 1024
+        logger.info(f"Model forward - Memory before: {mem_before:.2f} MB")
+        sys.stdout.flush()
+        
+        # Create tiny input in half precision
+        x = torch.randn(1, 3, 224, 224, dtype=torch.float16, device=device)
+        
+        logger.info("Running model forward pass...")
+        sys.stdout.flush()
+        
+        with torch.no_grad():
+            output = model(x)
+        
+        mem_after = psutil.Process().memory_info().rss / 1024 / 1024
+        logger.info(f"Model forward - Memory after: {mem_after:.2f} MB")
+        sys.stdout.flush()
+        
+        output_shape = list(output.shape)
+        
+        del x, output
+        gc.collect()
+        
+        return jsonify({
+            'status': 'ok',
+            'output_shape': output_shape,
+            'memory_before_mb': round(mem_before, 2),
+            'memory_after_mb': round(mem_after, 2),
+            'memory_delta_mb': round(mem_after - mem_before, 2)
+        }), 200
+    except Exception as e:
+        logger.error(f"Error in /debug/model_forward: {e}")
+        logger.error(traceback.format_exc())
+        sys.stdout.flush()
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
 @app.route('/debug/echo', methods=['POST'])
 def debug_echo():
     """
