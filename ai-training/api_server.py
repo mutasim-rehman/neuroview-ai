@@ -655,22 +655,32 @@ def debug_predict():
     Debug endpoint to test the full prediction pipeline with minimal synthetic data.
     This isolates the prediction logic from file upload/transfer issues.
     """
+    step = "init"
+    mem_before = None
+    mem_after_preprocess = None
+    mem_after_predict = None
+    
     try:
+        step = "log_start"
         logger.info("=== DEBUG PREDICT START ===")
         sys.stdout.flush()
         
+        step = "check_model"
         if model is None:
-            return jsonify({'error': 'Model not loaded'}), 503
+            return jsonify({'error': 'Model not loaded', 'step': step}), 503
         
+        step = "memory_before"
         # Check memory before
         try:
             import psutil
             mem_before = psutil.Process().memory_info().rss / 1024 / 1024
             logger.info(f"Memory before: {mem_before:.2f} MB")
-        except:
+        except Exception as mem_e:
+            logger.warning(f"Could not get memory: {mem_e}")
             mem_before = None
         sys.stdout.flush()
         
+        step = "create_slice"
         # Create tiny synthetic 2D slice (much smaller than real data)
         logger.info("Creating synthetic 2D slice (64x64)...")
         sys.stdout.flush()
@@ -678,11 +688,13 @@ def debug_predict():
         slice_2d = np.random.rand(64, 64).astype(np.float32) * 255
         slice_normalized = slice_2d.astype(np.uint8)
         
+        step = "create_image"
         logger.info("Converting to PIL Image...")
         sys.stdout.flush()
         
         image = Image.fromarray(slice_normalized, mode='L').convert('RGB')
         
+        step = "preprocess"
         logger.info("Preprocessing image...")
         sys.stdout.flush()
         
@@ -691,37 +703,47 @@ def debug_predict():
         logger.info(f"Image tensor shape: {image_tensor.shape}")
         sys.stdout.flush()
         
+        step = "memory_after_preprocess"
         # Check memory after preprocessing
         try:
+            import psutil
             mem_after_preprocess = psutil.Process().memory_info().rss / 1024 / 1024
             logger.info(f"Memory after preprocess: {mem_after_preprocess:.2f} MB")
-        except:
+        except Exception as mem_e:
+            logger.warning(f"Could not get memory: {mem_e}")
             mem_after_preprocess = None
         sys.stdout.flush()
         
+        step = "predict"
         logger.info("Running prediction...")
         sys.stdout.flush()
         
         # Run actual prediction
         result = predict_disease(image_tensor)
         
+        step = "log_result"
         logger.info(f"Prediction result: {result.get('prediction', 'unknown')}")
         sys.stdout.flush()
         
+        step = "memory_after_predict"
         # Check memory after prediction
         try:
+            import psutil
             mem_after_predict = psutil.Process().memory_info().rss / 1024 / 1024
             logger.info(f"Memory after predict: {mem_after_predict:.2f} MB")
-        except:
+        except Exception as mem_e:
+            logger.warning(f"Could not get memory: {mem_e}")
             mem_after_predict = None
         sys.stdout.flush()
         
+        step = "cleanup"
         # Cleanup
         del image_tensor
         del image
         del slice_2d
         gc.collect()
         
+        step = "return"
         logger.info("=== DEBUG PREDICT SUCCESS ===")
         sys.stdout.flush()
         
@@ -736,11 +758,12 @@ def debug_predict():
         }), 200
         
     except Exception as e:
-        logger.error(f"Debug predict error: {e}")
+        logger.error(f"Debug predict error at step '{step}': {e}")
         logger.error(traceback.format_exc())
         sys.stdout.flush()
         return jsonify({
             'status': 'error',
+            'step': step,
             'error': str(e),
             'traceback': traceback.format_exc()
         }), 500
