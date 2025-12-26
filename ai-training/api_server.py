@@ -398,6 +398,10 @@ def predict():
         logger.info(f"Content-Length: {request.content_length}")
         sys.stdout.flush()
         
+        # Ensure request data is available
+        if request.content_length and request.content_length > 50 * 1024 * 1024:
+            return jsonify({'error': 'File too large. Maximum size is 50MB.'}), 413
+        
         # Log that we're starting to parse files (this can be slow for large uploads)
         logger.info("Starting to parse uploaded file (this may take time for large files)...")
         sys.stdout.flush()
