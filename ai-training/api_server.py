@@ -64,6 +64,32 @@ def request_entity_too_large(error):
     sys.stdout.flush()
     return jsonify({'error': 'File too large. Maximum size is 50MB.'}), 413
 
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle internal server errors."""
+    logger.error(f"Internal server error: {error}")
+    logger.error(traceback.format_exc())
+    sys.stdout.flush()
+    sys.stderr.flush()
+    return jsonify({
+        'error': 'Internal server error',
+        'message': str(error) if os.environ.get('DEBUG', 'False') == 'True' else 'An error occurred processing your request'
+    }), 500
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Global exception handler to prevent 502 errors."""
+    logger.error(f"Unhandled exception: {e}")
+    logger.error(traceback.format_exc())
+    sys.stdout.flush()
+    sys.stderr.flush()
+    return jsonify({
+        'error': 'An unexpected error occurred',
+        'message': str(e) if os.environ.get('DEBUG', 'False') == 'True' else 'Please try again later'
+    }), 500
+
 # Global variables for model
 model = None
 device = None
@@ -81,16 +107,25 @@ def index():
     This API is not meant to serve a web page, only JSON endpoints for the
     NeuroView AI frontend and other clients.
     """
-    return jsonify({
-        "message": "NeuroView AI Brain Tumor Classification API",
-        "endpoints": {
-            "health": "/health",
-            "predict": "/predict",
-            "predict_from_array": "/predict_from_array"
-        },
-        "classes": CLASS_NAMES,
-        "status": "ok"
-    }), 200
+    try:
+        return jsonify({
+            "message": "NeuroView AI Brain Tumor Classification API",
+            "endpoints": {
+                "health": "/health",
+                "predict": "/predict",
+                "predict_from_array": "/predict_from_array"
+            },
+            "classes": CLASS_NAMES,
+            "status": "ok"
+        }), 200
+    except Exception as e:
+        logger.error(f"Error in index endpoint: {e}")
+        logger.error(traceback.format_exc())
+        sys.stdout.flush()
+        return jsonify({
+            "error": "An error occurred",
+            "status": "error"
+        }), 500
 
 
 def load_model():
@@ -132,13 +167,25 @@ def load_model():
 
 
 # Load model when app starts (works with both direct run and gunicorn)
-print("Initializing API server...")
-print("Loading model...")
-if load_model():
-    print("Model loaded successfully!")
-else:
-    print("Warning: Model failed to load. Predictions will fail.")
-    print("Please ensure best_model.pth exists in ./checkpoints/ directory")
+# Wrap in try-except to ensure app starts even if model loading fails
+try:
+    print("Initializing API server...")
+    print("Loading model...")
+    sys.stdout.flush()
+    if load_model():
+        print("Model loaded successfully!")
+        sys.stdout.flush()
+    else:
+        print("Warning: Model failed to load. Predictions will fail.")
+        print("Please ensure best_model.pth exists in ./checkpoints/ directory")
+        sys.stdout.flush()
+except Exception as e:
+    print(f"Error during model initialization: {e}")
+    print("Server will start but predictions will fail.")
+    traceback.print_exc()
+    sys.stdout.flush()
+    model = None
+    device = None
 
 
 def volume_to_2d_image(volume: np.ndarray) -> Image.Image:
@@ -277,11 +324,20 @@ def predict_disease(image_tensor: torch.Tensor):
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint."""
-    return jsonify({
-        'status': 'ok',
-        'model_loaded': model is not None,
-        'device': str(device) if device else None
-    })
+    try:
+        return jsonify({
+            'status': 'ok',
+            'model_loaded': model is not None,
+            'device': str(device) if device else None
+        }), 200
+    except Exception as e:
+        logger.error(f"Error in health check: {e}")
+        logger.error(traceback.format_exc())
+        sys.stdout.flush()
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
 
 
 @app.route('/predict', methods=['POST'])
@@ -300,7 +356,19 @@ def predict():
     """
     temp_path = None
     skip_volume_conversion = False
+    image = None
+    volume = None
+    image_tensor = None
+    
     try:
+        # Check if model is loaded
+        if model is None:
+            logger.error("Model not loaded - cannot process prediction")
+            sys.stdout.flush()
+            return jsonify({
+                'error': 'Model not loaded. Server may still be initializing.'
+            }), 503  # Service Unavailable
+        
         logger.info("Received prediction request")
         logger.info(f"Request method: {request.method}, Content-Type: {request.content_type}")
         logger.info(f"Content-Length: {request.content_length}")
@@ -424,16 +492,23 @@ def predict():
         sys.stdout.flush()
         
         # Explicit memory cleanup to prevent OOM on Render's 512MB limit
-        del image_tensor
-        if 'image' in locals():
+        if image_tensor is not None:
+            del image_tensor
+        if image is not None:
             del image
-        if 'volume' in locals():
+        if volume is not None:
             del volume
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         
-        return jsonify(result)
+        # Ensure we return a valid JSON response
+        if not isinstance(result, dict):
+            result = {'error': 'Invalid prediction result'}
+        
+        response = jsonify(result)
+        sys.stdout.flush()
+        return response
         
     except Exception as e:
         error_msg = f'Prediction failed: {str(e)}'
@@ -441,6 +516,19 @@ def predict():
         logger.error(traceback.format_exc())
         sys.stdout.flush()
         sys.stderr.flush()
+        
+        # Clean up any remaining resources
+        try:
+            if image_tensor is not None:
+                del image_tensor
+            if image is not None:
+                del image
+            if volume is not None:
+                del volume
+            gc.collect()
+        except:
+            pass
+        
         return jsonify({
             'error': error_msg,
             'traceback': traceback.format_exc() if os.environ.get('DEBUG', 'False') == 'True' else None
@@ -467,8 +555,25 @@ def predict_from_array():
         "shape": [128, 128, 128]
     }
     """
+    image = None
+    image_tensor = None
+    volume = None
+    
     try:
+        # Check if model is loaded
+        if model is None:
+            logger.error("Model not loaded - cannot process prediction")
+            sys.stdout.flush()
+            return jsonify({
+                'error': 'Model not loaded. Server may still be initializing.'
+            }), 503  # Service Unavailable
+        
+        if not request.is_json:
+            return jsonify({'error': 'Request must be JSON'}), 400
+        
         data = request.json
+        if data is None:
+            return jsonify({'error': 'Invalid JSON data'}), 400
         
         if 'volume' not in data:
             return jsonify({'error': 'No volume data provided'}), 400
@@ -485,13 +590,41 @@ def predict_from_array():
         # Run prediction
         result = predict_disease(image_tensor)
         
-        return jsonify(result)
+        # Clean up
+        if image_tensor is not None:
+            del image_tensor
+        if image is not None:
+            del image
+        if volume is not None:
+            del volume
+        gc.collect()
+        
+        if not isinstance(result, dict):
+            result = {'error': 'Invalid prediction result'}
+        
+        return jsonify(result), 200
         
     except Exception as e:
-        print(f"Error in /predict_from_array endpoint: {e}")
-        traceback.print_exc()
+        logger.error(f"Error in /predict_from_array endpoint: {e}")
+        logger.error(traceback.format_exc())
+        sys.stdout.flush()
+        sys.stderr.flush()
+        
+        # Clean up
+        try:
+            if image_tensor is not None:
+                del image_tensor
+            if image is not None:
+                del image
+            if volume is not None:
+                del volume
+            gc.collect()
+        except:
+            pass
+        
         return jsonify({
-            'error': f'Prediction failed: {str(e)}'
+            'error': f'Prediction failed: {str(e)}',
+            'traceback': traceback.format_exc() if os.environ.get('DEBUG', 'False') == 'True' else None
         }), 500
 
 
