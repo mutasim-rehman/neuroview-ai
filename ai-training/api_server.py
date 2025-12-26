@@ -664,6 +664,57 @@ def debug_ping():
     }), 200
 
 
+@app.route('/debug/echo', methods=['POST'])
+def debug_echo():
+    """
+    Echo endpoint to test if POST requests are being received.
+    Returns immediately without any processing.
+    """
+    try:
+        content_length = request.content_length or 0
+        content_type = request.content_type or 'unknown'
+        
+        return jsonify({
+            'status': 'received',
+            'content_length': content_length,
+            'content_type': content_type,
+            'timestamp': str(__import__('datetime').datetime.now())
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/debug/json', methods=['POST'])
+def debug_json():
+    """
+    Test JSON parsing endpoint.
+    Parses JSON and returns immediately.
+    """
+    try:
+        logger.info("debug_json: Checking is_json...")
+        sys.stdout.flush()
+        
+        if not request.is_json:
+            return jsonify({'error': 'Not JSON', 'content_type': request.content_type}), 400
+        
+        logger.info("debug_json: Parsing JSON...")
+        sys.stdout.flush()
+        
+        data = request.json
+        
+        logger.info("debug_json: JSON parsed successfully")
+        sys.stdout.flush()
+        
+        return jsonify({
+            'status': 'parsed',
+            'keys': list(data.keys()) if data else [],
+            'timestamp': str(__import__('datetime').datetime.now())
+        }), 200
+    except Exception as e:
+        logger.error(f"debug_json error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/debug/predict', methods=['GET'])
 def debug_predict():
     """
