@@ -133,7 +133,7 @@ def predict_from_file(file_path: str) -> Optional[Dict[str, Any]]:
     Returns:
         Prediction response dictionary or None if failed
     """
-    print_header("TEST 3: Prediction from .nii File")
+    print_header("TEST 4: Full Prediction from .nii File")
     
     # Check if file exists
     if not os.path.exists(file_path):
@@ -232,6 +232,69 @@ def display_prediction_results(results: Dict[str, Any]):
     print(f"\n{Colors.BOLD}Full JSON Response:{Colors.END}")
     print(json.dumps(results, indent=2))
 
+def test_debug_upload(file_path: str) -> Optional[Dict[str, Any]]:
+    """
+    Test the debug upload endpoint to isolate upload vs processing issues.
+    
+    Args:
+        file_path: Path to the .nii file
+        
+    Returns:
+        Debug response dictionary or None if failed
+    """
+    print_header("TEST 3: Debug Upload (Diagnose Issue)")
+    
+    if not os.path.exists(file_path):
+        print_error(f"File not found: {file_path}")
+        return None
+    
+    file_size = os.path.getsize(file_path)
+    print_info(f"File: {file_path}")
+    print_info(f"Size: {file_size / (1024*1024):.2f} MB")
+    
+    try:
+        print_info(f"Testing upload at {API_BASE_URL}/debug/upload...")
+        print_info("This tests file upload and NIfTI loading without full prediction...")
+        
+        with open(file_path, 'rb') as f:
+            files = {'file': (os.path.basename(file_path), f, 'application/octet-stream')}
+            response = requests.post(
+                f"{API_BASE_URL}/debug/upload",
+                files=files,
+                timeout=120  # 2 minutes for upload test
+            )
+        
+        if response.status_code == 200:
+            debug_data = response.json()
+            print_success("Debug upload successful!")
+            print(f"\nDebug Response:")
+            print(json.dumps(debug_data, indent=2))
+            return debug_data
+        elif response.status_code == 404:
+            print_warning("Debug endpoint not available (needs redeployment)")
+            print_info("Skipping debug test, will try full prediction...")
+            return {'status': 'not_available'}
+        else:
+            print_error(f"Debug upload failed with status code: {response.status_code}")
+            try:
+                error_data = response.json()
+                print_error(f"Error details: {json.dumps(error_data, indent=2)}")
+            except:
+                print_error(f"Response text: {response.text[:500] if response.text else '(empty)'}")
+            return None
+            
+    except requests.exceptions.Timeout:
+        print_error("Debug upload timed out after 2 minutes!")
+        print_error("This indicates the upload itself is too slow or Render is timing out.")
+        print_info("Possible solutions:")
+        print_info("  - Try a smaller file")
+        print_info("  - Check Render logs for more details")
+        return None
+    except Exception as e:
+        print_error(f"Error during debug upload: {str(e)}")
+        return None
+
+
 def get_nii_file() -> Optional[str]:
     """
     Get .nii file path from user input.
@@ -302,13 +365,27 @@ def main():
     # Test 2: Root endpoint
     test_root_endpoint()
     
-    # Test 3: Prediction
+    # Get file path
     file_path = get_nii_file()
     
     if file_path is None:
         print_error("\nNo valid file provided. Exiting.")
         return
     
+    # Test 3: Debug upload first (to diagnose issues)
+    print()
+    debug_results = test_debug_upload(file_path)
+    
+    if debug_results is None:
+        print_error("\nDebug upload failed - this indicates the issue is with file upload or basic processing.")
+        print_info("Check Render logs for detailed error messages.")
+        print_info("Common issues:")
+        print_info("  - Render request timeout (5 min limit)")
+        print_info("  - Memory exhaustion")
+        print_info("  - File too large for upload")
+        return
+    
+    # Test 4: Full prediction
     print()
     prediction_results = predict_from_file(file_path)
     

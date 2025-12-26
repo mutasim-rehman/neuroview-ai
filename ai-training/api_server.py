@@ -125,7 +125,9 @@ def index():
             "endpoints": {
                 "health": "/health",
                 "predict": "/predict",
-                "predict_from_array": "/predict_from_array"
+                "predict_from_array": "/predict_from_array",
+                "predict_base64": "/predict_base64",
+                "debug_upload": "/debug/upload"
             },
             "classes": CLASS_NAMES,
             "status": "ok"
@@ -156,21 +158,43 @@ def load_model():
         model_type='custom'
     )
     
-    # Load checkpoint
+    # Try inference checkpoint first (smaller, faster loading)
+    inference_checkpoint_path = os.path.join(config.CHECKPOINT_DIR, "best_model_inference.pth")
     checkpoint_path = os.path.join(config.CHECKPOINT_DIR, "best_model.pth")
     
-    if not os.path.exists(checkpoint_path):
+    # Prefer inference checkpoint if it exists
+    if os.path.exists(inference_checkpoint_path):
+        checkpoint_path = inference_checkpoint_path
+        print(f"Using inference-optimized checkpoint: {checkpoint_path}")
+    elif not os.path.exists(checkpoint_path):
         print(f"Warning: Model checkpoint not found at {checkpoint_path}")
         print("Please train the model first using main_train_diseases.py")
         return False
     
     try:
-        checkpoint = torch.load(checkpoint_path, map_location=device)
+        print(f"Loading checkpoint ({os.path.getsize(checkpoint_path) / 1024 / 1024:.1f} MB)...")
+        sys.stdout.flush()
+        
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint['model_state_dict'])
         model.to(device)
         model.eval()  # Set to evaluation mode
+        
+        # Force garbage collection after loading
+        gc.collect()
+        
         print(f"Classification model loaded successfully from {checkpoint_path}")
         print(f"Classes: {CLASS_NAMES}")
+        
+        # Log memory usage if psutil available
+        try:
+            import psutil
+            mem = psutil.Process().memory_info().rss / 1024 / 1024
+            print(f"Memory after loading model: {mem:.1f} MB")
+        except ImportError:
+            pass
+        
+        sys.stdout.flush()
         return True
     except Exception as e:
         print(f"Error loading model: {e}")
@@ -337,6 +361,19 @@ def predict_disease(image_tensor: torch.Tensor):
 def health_check():
     """Health check endpoint."""
     try:
+        import psutil
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        
+        return jsonify({
+            'status': 'ok',
+            'model_loaded': model is not None,
+            'device': str(device) if device else None,
+            'memory_mb': round(memory_info.rss / 1024 / 1024, 2),
+            'memory_percent': round(process.memory_percent(), 2)
+        }), 200
+    except ImportError:
+        # psutil not available
         return jsonify({
             'status': 'ok',
             'model_loaded': model is not None,
@@ -611,6 +648,129 @@ def predict():
             sys.stdout.flush()
 
 
+@app.route('/debug/upload', methods=['POST'])
+def debug_upload():
+    """
+    Debug endpoint to test file upload without full prediction.
+    This helps diagnose if the issue is upload or processing.
+    """
+    temp_path = None
+    try:
+        logger.info("=== DEBUG UPLOAD START ===")
+        logger.info(f"Content-Type: {request.content_type}")
+        logger.info(f"Content-Length: {request.content_length}")
+        sys.stdout.flush()
+        
+        # Check memory before processing
+        try:
+            import psutil
+            process = psutil.Process()
+            mem_before = process.memory_info().rss / 1024 / 1024
+            logger.info(f"Memory before: {mem_before:.2f} MB")
+        except ImportError:
+            mem_before = None
+        sys.stdout.flush()
+        
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file in request', 'step': 'file_check'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'Empty filename', 'step': 'filename_check'}), 400
+        
+        logger.info(f"File received: {file.filename}")
+        sys.stdout.flush()
+        
+        # Save to temp file
+        temp_dir = tempfile.gettempdir()
+        temp_path = os.path.join(temp_dir, f"debug_{os.urandom(4).hex()}.nii")
+        
+        logger.info(f"Saving to: {temp_path}")
+        sys.stdout.flush()
+        
+        file.save(temp_path)
+        file_size = os.path.getsize(temp_path)
+        logger.info(f"File saved, size: {file_size} bytes ({file_size/1024/1024:.2f} MB)")
+        sys.stdout.flush()
+        
+        # Try to load just the header (not the data)
+        logger.info("Loading NIfTI header only...")
+        sys.stdout.flush()
+        
+        nifti_img = nib.load(temp_path)
+        shape = nifti_img.shape
+        logger.info(f"NIfTI shape: {shape}")
+        sys.stdout.flush()
+        
+        # Check memory after loading header
+        try:
+            mem_after_header = psutil.Process().memory_info().rss / 1024 / 1024
+            logger.info(f"Memory after header: {mem_after_header:.2f} MB")
+        except:
+            mem_after_header = None
+        sys.stdout.flush()
+        
+        # Load a single slice
+        logger.info("Loading single slice...")
+        sys.stdout.flush()
+        
+        slice_idx = shape[2] // 2
+        slice_img = nifti_img.slicer[:, :, slice_idx:slice_idx+1]
+        slice_data = slice_img.get_fdata()
+        slice_array = np.squeeze(slice_data).astype(np.float32)
+        
+        logger.info(f"Slice loaded, shape: {slice_array.shape}")
+        sys.stdout.flush()
+        
+        # Check memory after loading slice
+        try:
+            mem_after_slice = psutil.Process().memory_info().rss / 1024 / 1024
+            logger.info(f"Memory after slice: {mem_after_slice:.2f} MB")
+        except:
+            mem_after_slice = None
+        sys.stdout.flush()
+        
+        # Cleanup
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
+            temp_path = None
+        
+        del slice_data
+        del slice_array
+        gc.collect()
+        
+        logger.info("=== DEBUG UPLOAD SUCCESS ===")
+        sys.stdout.flush()
+        
+        return jsonify({
+            'status': 'success',
+            'file_size_bytes': file_size,
+            'file_size_mb': round(file_size / 1024 / 1024, 2),
+            'nifti_shape': shape,
+            'memory_mb': {
+                'before': round(mem_before, 2) if mem_before else None,
+                'after_header': round(mem_after_header, 2) if mem_after_header else None,
+                'after_slice': round(mem_after_slice, 2) if mem_after_slice else None
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Debug upload error: {e}")
+        logger.error(traceback.format_exc())
+        sys.stdout.flush()
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+
+
 @app.route('/predict_from_array', methods=['POST'])
 def predict_from_array():
     """
@@ -618,9 +778,13 @@ def predict_from_array():
     
     Expected JSON:
     {
-        "volume": [[[...]]],  # 3D numpy array as nested lists
+        "volume": [[[...]]],  # 3D numpy array as nested lists (SMALL volumes only!)
         "shape": [128, 128, 128]
     }
+    
+    WARNING: This endpoint is memory-intensive for large volumes.
+    For production use with large data, use /predict with file upload
+    or /predict_base64 with base64-encoded numpy array.
     """
     image = None
     image_tensor = None
@@ -635,8 +799,18 @@ def predict_from_array():
                 'error': 'Model not loaded. Server may still be initializing.'
             }), 503  # Service Unavailable
         
+        # Check content length - limit to 10MB for JSON arrays
+        if request.content_length and request.content_length > 10 * 1024 * 1024:
+            return jsonify({
+                'error': 'Request too large. Use /predict with file upload for large data.',
+                'max_size_mb': 10
+            }), 413
+        
         if not request.is_json:
             return jsonify({'error': 'Request must be JSON'}), 400
+        
+        logger.info("Parsing JSON request...")
+        sys.stdout.flush()
         
         data = request.json
         if data is None:
@@ -645,26 +819,47 @@ def predict_from_array():
         if 'volume' not in data:
             return jsonify({'error': 'No volume data provided'}), 400
         
+        logger.info("Converting nested lists to numpy array...")
+        sys.stdout.flush()
+        
         # Convert nested lists to numpy array
         volume = np.array(data['volume'], dtype=np.float32)
+        
+        logger.info(f"Volume shape: {volume.shape}, converting to 2D image...")
+        sys.stdout.flush()
         
         # Convert 3D volume to 2D image slice
         image = volume_to_2d_image(volume)
         
+        # Free volume memory immediately
+        del volume
+        volume = None
+        gc.collect()
+        
+        logger.info("Preprocessing image...")
+        sys.stdout.flush()
+        
         # Preprocess image for classification
         image_tensor = preprocess_image_for_classification(image)
+        
+        # Free image memory
+        del image
+        image = None
+        gc.collect()
+        
+        logger.info("Running prediction...")
+        sys.stdout.flush()
         
         # Run prediction
         result = predict_disease(image_tensor)
         
         # Clean up
-        if image_tensor is not None:
-            del image_tensor
-        if image is not None:
-            del image
-        if volume is not None:
-            del volume
+        del image_tensor
+        image_tensor = None
         gc.collect()
+        
+        logger.info(f"Prediction complete: {result.get('prediction', 'unknown')}")
+        sys.stdout.flush()
         
         if not isinstance(result, dict):
             result = {'error': 'Invalid prediction result'}
@@ -693,6 +888,91 @@ def predict_from_array():
             'error': f'Prediction failed: {str(e)}',
             'traceback': traceback.format_exc() if os.environ.get('DEBUG', 'False') == 'True' else None
         }), 500
+
+
+@app.route('/predict_base64', methods=['POST'])
+def predict_base64():
+    """
+    Memory-efficient prediction from base64-encoded numpy array.
+    
+    Expected JSON:
+    {
+        "data": "<base64-encoded-bytes>",
+        "shape": [128, 128, 128],
+        "dtype": "float32"  # optional, defaults to float32
+    }
+    
+    This is more memory-efficient than /predict_from_array because
+    base64 encoding is much more compact than JSON nested lists.
+    """
+    image = None
+    image_tensor = None
+    volume = None
+    
+    try:
+        if model is None:
+            return jsonify({'error': 'Model not loaded'}), 503
+        
+        if not request.is_json:
+            return jsonify({'error': 'Request must be JSON'}), 400
+        
+        data = request.json
+        if data is None or 'data' not in data or 'shape' not in data:
+            return jsonify({
+                'error': 'Missing required fields',
+                'required': ['data', 'shape']
+            }), 400
+        
+        logger.info("Decoding base64 data...")
+        sys.stdout.flush()
+        
+        # Decode base64
+        decoded = base64.b64decode(data['data'])
+        
+        # Get dtype
+        dtype_str = data.get('dtype', 'float32')
+        dtype = getattr(np, dtype_str, np.float32)
+        
+        # Convert to numpy array
+        volume = np.frombuffer(decoded, dtype=dtype).reshape(tuple(data['shape']))
+        
+        logger.info(f"Volume shape: {volume.shape}")
+        sys.stdout.flush()
+        
+        # Convert to 2D image
+        image = volume_to_2d_image(volume)
+        del volume
+        volume = None
+        gc.collect()
+        
+        # Preprocess
+        image_tensor = preprocess_image_for_classification(image)
+        del image
+        image = None
+        gc.collect()
+        
+        # Predict
+        result = predict_disease(image_tensor)
+        del image_tensor
+        image_tensor = None
+        gc.collect()
+        
+        return jsonify(result), 200
+        
+    except Exception as e:
+        logger.error(f"Error in /predict_base64: {e}")
+        logger.error(traceback.format_exc())
+        sys.stdout.flush()
+        
+        try:
+            if volume is not None: del volume
+            if image is not None: del image
+            if image_tensor is not None: del image_tensor
+            gc.collect()
+        except:
+            pass
+        
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
