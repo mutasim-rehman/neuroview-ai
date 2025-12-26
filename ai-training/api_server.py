@@ -649,6 +649,16 @@ def predict():
             sys.stdout.flush()
 
 
+@app.route('/debug/ping', methods=['GET'])
+def debug_ping():
+    """Simple ping endpoint to verify Flask is working."""
+    return jsonify({
+        'status': 'pong',
+        'model_loaded': model is not None,
+        'timestamp': str(__import__('datetime').datetime.now())
+    }), 200
+
+
 @app.route('/debug/predict', methods=['GET'])
 def debug_predict():
     """
@@ -758,14 +768,17 @@ def debug_predict():
         }), 200
         
     except Exception as e:
-        logger.error(f"Debug predict error at step '{step}': {e}")
-        logger.error(traceback.format_exc())
+        error_msg = str(e)
+        tb = traceback.format_exc()
+        logger.error(f"Debug predict error at step '{step}': {error_msg}")
+        logger.error(tb)
         sys.stdout.flush()
+        # Always return full error for debug endpoint (regardless of DEBUG env var)
         return jsonify({
             'status': 'error',
             'step': step,
-            'error': str(e),
-            'traceback': traceback.format_exc()
+            'error': error_msg,
+            'traceback': tb
         }), 500
 
 
