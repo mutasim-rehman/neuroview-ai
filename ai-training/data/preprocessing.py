@@ -98,29 +98,38 @@ def load_nifti_slice(filepath: str, slice_axis: int = 2, slice_idx: Optional[int
         slice_idx = shape[slice_axis] // 2
     
     # Use arrayproxy to load only the slice we need (memory efficient)
-    # The slicer returns a view that only loads the requested slice
+    # The slicer requires slice notation [x:x+1] instead of scalar [x]
     if len(shape) == 3:
         if slice_axis == 0:
-            slice_img = nifti_img.slicer[slice_idx, :, :]
+            slice_img = nifti_img.slicer[slice_idx:slice_idx+1, :, :]
         elif slice_axis == 1:
-            slice_img = nifti_img.slicer[:, slice_idx, :]
+            slice_img = nifti_img.slicer[:, slice_idx:slice_idx+1, :]
         else:  # slice_axis == 2
-            slice_img = nifti_img.slicer[:, :, slice_idx]
+            slice_img = nifti_img.slicer[:, :, slice_idx:slice_idx+1]
     elif len(shape) == 2:
         slice_img = nifti_img
     elif len(shape) == 4:
         # For 4D, take middle slice of first volume
         if slice_axis == 0:
-            slice_img = nifti_img.slicer[slice_idx, :, :, 0]
+            slice_img = nifti_img.slicer[slice_idx:slice_idx+1, :, :, 0:1]
         elif slice_axis == 1:
-            slice_img = nifti_img.slicer[:, slice_idx, :, 0]
+            slice_img = nifti_img.slicer[:, slice_idx:slice_idx+1, :, 0:1]
         else:
-            slice_img = nifti_img.slicer[:, :, slice_idx, 0]
+            slice_img = nifti_img.slicer[:, :, slice_idx:slice_idx+1, 0:1]
     else:
         raise ValueError(f"Unsupported volume shape: {shape}")
     
     # Get the actual data array (this only loads the slice, not the entire volume)
-    slice_array = slice_img.get_fdata().astype(np.float32)
+    slice_data = slice_img.get_fdata()
+    
+    # Squeeze out the singleton dimensions to get a 2D array
+    slice_array = np.squeeze(slice_data).astype(np.float32)
+    
+    # Ensure we have a 2D array
+    if len(slice_array.shape) != 2:
+        # If still not 2D, take the first slice
+        slice_array = slice_array[..., 0] if len(slice_array.shape) > 2 else slice_array
+        slice_array = slice_array.astype(np.float32)
     
     header = {
         'affine': nifti_img.affine,
