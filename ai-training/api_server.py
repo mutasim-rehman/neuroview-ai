@@ -93,6 +93,11 @@ def internal_error(error):
 @app.errorhandler(Exception)
 def handle_exception(e):
     """Global exception handler to prevent 502 errors."""
+    # Don't catch HTTP exceptions (404, etc.) - let Flask handle those normally
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
+    
     logger.error(f"Unhandled exception: {e}")
     logger.error(traceback.format_exc())
     sys.stdout.flush()
