@@ -402,14 +402,33 @@ def predict():
         logger.info("Starting to parse uploaded file (this may take time for large files)...")
         sys.stdout.flush()
         
+        # Safely check for file upload
+        has_file = False
+        has_json_data = False
+        
+        try:
+            # Check if request has files (multipart/form-data)
+            if request.content_type and 'multipart/form-data' in request.content_type:
+                has_file = 'file' in request.files
+            elif request.files:
+                has_file = 'file' in request.files
+        except Exception as e:
+            logger.warning(f"Error checking request.files: {e}")
+            has_file = False
+        
+        try:
+            # Check if request has JSON data
+            if request.is_json and request.json:
+                has_json_data = 'volume_data' in request.json
+        except Exception as e:
+            logger.warning(f"Error checking request.json: {e}")
+            has_json_data = False
+        
         # Check if file is uploaded
-        if 'file' in request.files:
+        if has_file:
             file = request.files['file']
             if file.filename == '':
                 return jsonify({'error': 'No file provided'}), 400
-            
-            logger.info(f"Processing file: {file.filename}, content_type: {file.content_type}")
-            sys.stdout.flush()
             
             # Save to temporary file (use tempfile for cross-platform compatibility)
             temp_dir = tempfile.gettempdir()
@@ -419,6 +438,11 @@ def predict():
             sys.stdout.flush()
             
             try:
+                # Get the file object
+                file = request.files['file']
+                if not file or file.filename == '':
+                    return jsonify({'error': 'No file provided or empty filename'}), 400
+                
                 file.save(temp_path)
                 file_size = os.path.getsize(temp_path)
                 logger.info(f"File saved, size: {file_size} bytes")
@@ -475,23 +499,38 @@ def predict():
                 sys.stdout.flush()
                 raise
             
-        elif 'volume_data' in request.json:
-            # Accept base64 encoded volume data
-            volume_data_b64 = request.json['volume_data']
-            volume = np.frombuffer(
-                base64.b64decode(volume_data_b64),
-                dtype=np.float32
-            )
-            
-            # Reshape if shape provided
-            if 'shape' in request.json:
-                volume = volume.reshape(tuple(request.json['shape']))
-            else:
-                # Assume it's already in the right shape
-                # This is a fallback - should provide shape
-                volume = volume.reshape((128, 128, 128))
+        elif has_json_data:
+            try:
+                # Accept base64 encoded volume data
+                json_data = request.json
+                if not json_data or 'volume_data' not in json_data:
+                    return jsonify({'error': 'Invalid JSON: volume_data field is required'}), 400
+                
+                volume_data_b64 = json_data['volume_data']
+                decoded_data = base64.b64decode(volume_data_b64)
+                volume = np.frombuffer(decoded_data, dtype=np.float32)
+                
+                # Reshape if shape provided
+                if 'shape' in json_data:
+                    volume = volume.reshape(tuple(json_data['shape']))
+                else:
+                    # Assume it's already in the right shape
+                    # This is a fallback - should provide shape
+                    volume = volume.reshape((128, 128, 128))
+            except Exception as e:
+                logger.error(f"Error processing JSON volume data: {e}")
+                logger.error(traceback.format_exc())
+                sys.stdout.flush()
+                return jsonify({
+                    'error': 'Failed to process volume_data',
+                    'message': str(e)
+                }), 400
         else:
-            return jsonify({'error': 'No file or volume_data provided'}), 400
+            return jsonify({
+                'error': 'No file or volume_data provided',
+                'message': 'Please provide either a file upload (multipart/form-data with "file" field) or JSON data with "volume_data" field',
+                'content_type': request.content_type
+            }), 400
         
         # Convert 3D volume to 2D image slice (only if we didn't already load a slice)
         if not skip_volume_conversion:
