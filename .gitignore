@@ -47,6 +47,8 @@ events.out.tfevents.*
 # Data files (large binary files)
 *.nii
 *.nii.gz
+!demo.nii
+!public/demo.nii
 *.dcm
 *.dicom
 temp_extracted/

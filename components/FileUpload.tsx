@@ -1,11 +1,27 @@
-import React, { useCallback } from 'react';
-import { UploadCloud, FileType } from 'lucide-react';
+import React, { useCallback, useState } from 'react';
+import { UploadCloud, FileType, Play } from 'lucide-react';
 
 interface FileUploadProps {
   onFileSelect: (file: File) => void;
 }
 
 const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect }) => {
+  const [isLoadingDemo, setIsLoadingDemo] = useState(false);
+
+  const handleLoadDemo = async () => {
+    setIsLoadingDemo(true);
+    try {
+      const response = await fetch('/demo.nii');
+      const blob = await response.blob();
+      const file = new File([blob], 'demo.nii', { type: 'application/octet-stream' });
+      onFileSelect(file);
+    } catch (error) {
+      console.error('Failed to load demo file:', error);
+    } finally {
+      setIsLoadingDemo(false);
+    }
+  };
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -36,12 +52,23 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect }) => {
             Drag and drop your <code className="bg-zinc-800 px-1 rounded text-emerald-400">.nii</code> or <code className="bg-zinc-800 px-1 rounded text-emerald-400">.nii.gz</code> file here to visualize it instantly in the browser.
         </p>
         
-        <label className="relative">
-            <input type="file" className="hidden" accept=".nii,.nii.gz" onChange={handleChange} />
-            <span className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition shadow-lg shadow-emerald-900/20">
-                Browse Files
-            </span>
-        </label>
+        <div className="flex gap-4">
+            <label className="relative cursor-pointer">
+                <input type="file" className="hidden" accept=".nii,.nii.gz" onChange={handleChange} />
+                <span className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition shadow-lg shadow-emerald-900/20 inline-block">
+                    Browse Files
+                </span>
+            </label>
+            
+            <button
+                onClick={handleLoadDemo}
+                disabled={isLoadingDemo}
+                className="px-6 py-3 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg font-medium transition shadow-lg shadow-zinc-900/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                <Play size={16} className={isLoadingDemo ? 'animate-pulse' : ''} />
+                {isLoadingDemo ? 'Loading...' : 'Load Demo'}
+            </button>
+        </div>
         
         <div className="mt-8 flex items-center gap-6 text-zinc-600 text-sm">
             <span className="flex items-center gap-2"><FileType size={14}/> Secure Client-side Parsing</span>
