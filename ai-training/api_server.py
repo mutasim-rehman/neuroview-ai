@@ -186,11 +186,6 @@ def load_model():
         model.to(device)
         model.eval()  # Set to evaluation mode
         
-        # Convert to half precision (float16) to reduce memory usage
-        # This is safe for inference and cuts memory in half
-        model = model.half()
-        print("Model converted to half precision (float16) for memory efficiency")
-        
         # Force garbage collection after loading
         gc.collect()
         
@@ -331,8 +326,8 @@ def predict_disease(image_tensor: torch.Tensor):
         }
     
     try:
-        # Move tensor to device and convert to half precision to match model
-        image_tensor = image_tensor.to(device).half()
+        # Move tensor to device
+        image_tensor = image_tensor.to(device)
         
         # Run inference
         with torch.no_grad():
@@ -713,8 +708,8 @@ def debug_model_forward():
         logger.info(f"Model forward - Memory before: {mem_before:.2f} MB")
         sys.stdout.flush()
         
-        # Create tiny input in half precision
-        x = torch.randn(1, 3, 224, 224, dtype=torch.float16, device=device)
+        # Create tiny input
+        x = torch.randn(1, 3, 224, 224, device=device)
         
         logger.info("Running model forward pass...")
         sys.stdout.flush()
