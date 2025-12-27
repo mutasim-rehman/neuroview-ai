@@ -442,6 +442,6 @@ For issues, questions, or feature requests, please open an issue on the reposito
 
 <div align="center">
 
-**Built with ❤️ for the medical imaging community**
+**Built with ❤️ for educational & research purposes**
 
 </div>
