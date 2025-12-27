@@ -9,19 +9,59 @@
 [![Three.js](https://img.shields.io/badge/Three.js-0.181-green)](https://threejs.org/)
 [![Vite](https://img.shields.io/badge/Vite-6.2-purple)](https://vitejs.dev/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-orange)](https://pytorch.org/)
+[![Llama](https://img.shields.io/badge/Llama_3-7B-red)](https://llama.meta.com/)
 
 </div>
 
-## Project Structure
+## 🍰 Three-Layer Architecture
 
-This repository contains two main sub-projects:
+NeuroView AI is built as a **3-layer cake architecture**, with each layer handling a specific aspect of medical imaging analysis:
 
-1. **Web Visualization Platform** (React/TypeScript) - Medical imaging viewer and visualization tools
-2. **AI Training Pipeline** (`ai-training/`) - Deep learning model training for brain scan analysis
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  LAYER 3: LLM Health Assistant (Llama 3 7B + RAG + SFT)        │  🚧 In Progress
+│  - Medical history collection                                   │
+│  - Likely cause detection                                       │
+│  - Future medical path recommendations                          │
+├─────────────────────────────────────────────────────────────────┤
+│  LAYER 2: Prediction Model (CNN Deep Learning)                  │  ✅ Complete
+│  - Brain scan anomaly detection                                 │
+│  - 3D CNN trained on healthy brain scans                        │
+│  - Confidence scoring and error metrics                         │
+├─────────────────────────────────────────────────────────────────┤
+│  LAYER 1: Visualization (Vite + Three.js)                       │  ✅ Complete
+│  - 3D volume rendering with ray marching                        │
+│  - Multi-planar views (Axial, Sagittal, Coronal)               │
+│  - NIfTI file parsing and 4D support                            │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-### Architecture
+| Layer | Technology | Purpose | Status |
+|-------|------------|---------|--------|
+| **Layer 1** | Vite, React, Three.js | 3D medical imaging visualization | ✅ Complete |
+| **Layer 2** | PyTorch, 3D CNN | Brain scan prediction & anomaly detection | ✅ Complete |
+| **Layer 3** | Llama 3 7B, RAG, SFT | Intelligent health inspection & recommendations | 🚧 In Progress |
 
-**⚠️ Important:** The frontend and backend are **completely decoupled** and communicate only through HTTP API calls:
+### Layer Details
+
+#### 🎨 Layer 1: Visualization
+The foundation layer providing advanced 3D medical imaging visualization using WebGL and Three.js. Handles NIfTI file parsing, volume rendering, and interactive slice views.
+
+#### 🧠 Layer 2: Prediction Model
+Deep learning layer using a 3D Convolutional Neural Network trained on healthy brain T1 scans. Detects anomalies by comparing input scans against learned healthy brain patterns.
+
+#### 🤖 Layer 3: LLM Health Assistant (In Development)
+Intelligent medical assistant powered by **Llama 3 7B** with:
+- **RAG (Retrieval-Augmented Generation)**: Retrieves relevant medical knowledge for accurate responses
+- **Supervised Fine-Tuning (SFT)**: Fine-tuned on medical domain data for specialized health insights
+- **Key Features**:
+  - Collects and analyzes patient medical history
+  - Identifies likely causes based on scan results and symptoms
+  - Suggests future medical pathways and follow-up recommendations
+
+## System Architecture
+
+**⚠️ Important:** All layers are **completely decoupled** and communicate only through HTTP API calls:
 
 - **Frontend** (Vercel): React/TypeScript app with **zero direct model access**
 - **Backend** (Render): Python Flask API that handles all model inference
