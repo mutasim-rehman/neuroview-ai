@@ -115,6 +115,14 @@ device = None
 CLASS_NAMES = ['glioma', 'meningioma', 'notumor', 'pituitary']
 NUM_CLASSES = len(CLASS_NAMES)
 
+# User-friendly display names
+DISPLAY_NAMES = {
+    'glioma': 'Glioma (Tumor)',
+    'meningioma': 'Meningioma (Tumor)',
+    'notumor': 'Healthy (No Tumor)',
+    'pituitary': 'Pituitary Tumor'
+}
+
 
 @app.route('/', methods=['GET'])
 def index():
@@ -285,18 +293,19 @@ def volume_to_2d_image(volume: np.ndarray) -> Image.Image:
     return image
 
 
-def preprocess_image_for_classification(image: Image.Image) -> torch.Tensor:
+def preprocess_image_for_classification(image: Image.Image, size: int = 224) -> torch.Tensor:
     """
     Preprocess image for classification model.
     
     Args:
         image: PIL Image (RGB)
+        size: Image size (default 224, can use smaller for memory efficiency)
         
     Returns:
-        Preprocessed tensor (1, 3, 224, 224)
+        Preprocessed tensor (1, 3, size, size)
     """
     transform = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize((size, size)),
         transforms.ToTensor(),
         transforms.Normalize(
             mean=[0.485, 0.456, 0.406],
@@ -348,9 +357,15 @@ def predict_disease(image_tensor: torch.Tensor):
         predicted_class = CLASS_NAMES[predicted_class_idx]
         confidence = float(probs[predicted_class_idx])
         
+        # Determine if healthy or tumor detected
+        is_healthy = predicted_class == 'notumor'
+        
         return {
             'prediction': predicted_class,
+            'prediction_display': DISPLAY_NAMES.get(predicted_class, predicted_class),
             'confidence': confidence,
+            'is_healthy': is_healthy,
+            'status': 'HEALTHY - No tumor detected' if is_healthy else f'TUMOR DETECTED - {DISPLAY_NAMES.get(predicted_class, predicted_class)}',
             'class_probabilities': class_probs,
             'all_classes': CLASS_NAMES
         }
