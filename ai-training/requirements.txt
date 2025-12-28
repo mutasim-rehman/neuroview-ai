@@ -1,8 +1,12 @@
 # Core ML Dependencies (minimal for inference)
-torch>=2.0.0
-torchvision>=0.15.0
+# CPU-only PyTorch (much smaller, no CUDA overhead)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
+
 nibabel>=5.0.0
 numpy>=1.24.0,<2.0.0  # NumPy 2.0+ has compatibility issues with nibabel
+scipy>=1.10.0  # Required for preprocessing
 pillow>=10.0.0
 
 # API Server dependencies
@@ -10,11 +14,3 @@ flask>=2.3.0
 flask-cors>=4.0.0
 gunicorn>=21.2.0
 psutil>=5.9.0  # For memory monitoring
-
-# Training dependencies (only needed for training, not deployment)
-# scipy>=1.10.0
-# scikit-learn>=1.3.0
-# tqdm>=4.65.0
-# tensorboard>=2.13.0
-# matplotlib>=3.7.0
-# numba>=0.57.0
