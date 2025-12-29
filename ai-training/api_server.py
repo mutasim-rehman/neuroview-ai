@@ -253,19 +253,10 @@ def volume_to_2d_image(volume: np.ndarray) -> Image.Image:
     
     # Handle different dimensions
     if len(volume.shape) == 3:
-        # Extract middle slice - try different dimensions
-        # NIfTI files can have different axis orders
-        # Try to find the largest dimension and slice along it
-        dims = volume.shape
-        max_dim_idx = np.argmax(dims)
-        slice_idx = dims[max_dim_idx] // 2
-        
-        if max_dim_idx == 0:
-            slice_2d = volume[slice_idx, :, :]
-        elif max_dim_idx == 1:
-            slice_2d = volume[:, slice_idx, :]
-        else:
-            slice_2d = volume[:, :, slice_idx]
+        # Extract middle slice from axis 0 to match training code
+        # Training uses: volume[slice_idx, :, :] (axis 0)
+        slice_idx = volume.shape[0] // 2
+        slice_2d = volume[slice_idx, :, :]
             
     elif len(volume.shape) == 2:
         slice_2d = volume
@@ -522,7 +513,8 @@ def predict():
                 try:
                     # Load only a single slice instead of entire volume to save memory
                     # This is critical for Render's 512MB RAM limit
-                    slice_2d, header = load_nifti_slice(temp_path, slice_axis=2, slice_idx=None)
+                    # IMPORTANT: Use slice_axis=0 to match training code orientation!
+                    slice_2d, header = load_nifti_slice(temp_path, slice_axis=0, slice_idx=None)
                     logger.info(f"NIfTI slice loaded, slice shape: {slice_2d.shape}, dtype: {slice_2d.dtype}, memory: {slice_2d.nbytes / 1024 / 1024:.2f} MB")
                     logger.info(f"Original volume shape: {header.get('shape', 'unknown')}")
                     sys.stdout.flush()
@@ -1006,8 +998,9 @@ def debug_upload():
         logger.info("Loading single slice...")
         sys.stdout.flush()
         
-        slice_idx = shape[2] // 2
-        slice_img = nifti_img.slicer[:, :, slice_idx:slice_idx+1]
+        # Use axis 0 to match training code orientation
+        slice_idx = shape[0] // 2
+        slice_img = nifti_img.slicer[slice_idx:slice_idx+1, :, :]
         slice_data = slice_img.get_fdata()
         slice_array = np.squeeze(slice_data).astype(np.float32)
         
