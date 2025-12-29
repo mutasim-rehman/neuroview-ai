@@ -493,8 +493,14 @@ def predict():
                 return jsonify({'error': 'No file provided'}), 400
             
             # Save to temporary file (use tempfile for cross-platform compatibility)
+            # Preserve original extension (.nii or .nii.gz) for nibabel compatibility
             temp_dir = tempfile.gettempdir()
-            temp_path = os.path.join(temp_dir, f"nifti_{os.urandom(8).hex()}.nii")
+            original_filename = file.filename.lower()
+            if original_filename.endswith('.nii.gz'):
+                ext = '.nii.gz'
+            else:
+                ext = '.nii'
+            temp_path = os.path.join(temp_dir, f"nifti_{os.urandom(8).hex()}{ext}")
             
             logger.info(f"Saving file to: {temp_path}")
             sys.stdout.flush()
@@ -962,9 +968,14 @@ def debug_upload():
         logger.info(f"File received: {file.filename}")
         sys.stdout.flush()
         
-        # Save to temp file
+        # Save to temp file - preserve extension for nibabel compatibility
         temp_dir = tempfile.gettempdir()
-        temp_path = os.path.join(temp_dir, f"debug_{os.urandom(4).hex()}.nii")
+        original_filename = file.filename.lower()
+        if original_filename.endswith('.nii.gz'):
+            ext = '.nii.gz'
+        else:
+            ext = '.nii'
+        temp_path = os.path.join(temp_dir, f"debug_{os.urandom(4).hex()}{ext}")
         
         logger.info(f"Saving to: {temp_path}")
         sys.stdout.flush()
