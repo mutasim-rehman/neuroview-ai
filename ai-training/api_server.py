@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config.config import config
 from models.classification_model import create_classification_model
 from data.preprocessing import load_nifti, load_nifti_slice
+from utils.gradcam import generate_gradcam_visualization
 import nibabel as nib
 
 app = Flask(__name__)
@@ -121,6 +122,30 @@ DISPLAY_NAMES = {
     'meningioma': 'Meningioma (Tumor)',
     'notumor': 'Healthy (No Tumor)',
     'pituitary': 'Pituitary Tumor'
+}
+
+# Typical anatomical locations for each tumor type
+# These are medically-accurate typical locations where these tumors occur
+TUMOR_LOCATIONS = {
+    'glioma': {
+        'region': 'Cerebral Hemisphere',
+        'description': 'Typically found in the cerebral hemispheres (frontal, temporal, parietal, or occipital lobes)',
+        'common_areas': ['Frontal lobe', 'Temporal lobe', 'Parietal lobe', 'Occipital lobe'],
+        'depth': 'Intra-axial (within brain tissue)'
+    },
+    'meningioma': {
+        'region': 'Meninges (Brain Surface)',
+        'description': 'Typically found on the outer surface of the brain, arising from the meninges',
+        'common_areas': ['Convexity (top of brain)', 'Parasagittal region', 'Sphenoid wing', 'Skull base'],
+        'depth': 'Extra-axial (outside brain tissue, on the surface)'
+    },
+    'pituitary': {
+        'region': 'Pituitary Gland (Sellar Region)',
+        'description': 'Located at the base of the brain in the pituitary gland area',
+        'common_areas': ['Sella turcica', 'Suprasellar region'],
+        'depth': 'Central skull base'
+    },
+    'notumor': None  # No location for healthy brain
 }
 
 
@@ -308,15 +333,17 @@ def preprocess_image_for_classification(image: Image.Image, size: int = 224) -> 
     return tensor.unsqueeze(0)  # Add batch dimension
 
 
-def predict_disease(image_tensor: torch.Tensor):
+def predict_disease(image_tensor: torch.Tensor, original_image: Image.Image = None, generate_heatmap: bool = True):
     """
     Predict brain tumor disease type using classification model.
     
     Args:
         image_tensor: Preprocessed image tensor (1, 3, 224, 224)
+        original_image: Original PIL Image for Grad-CAM overlay (optional)
+        generate_heatmap: Whether to generate Grad-CAM heatmap for tumors
         
     Returns:
-        Dictionary with prediction results
+        Dictionary with prediction results including visual localization
     """
     global model, device
     
@@ -351,7 +378,8 @@ def predict_disease(image_tensor: torch.Tensor):
         # Determine if healthy or tumor detected
         is_healthy = predicted_class == 'notumor'
         
-        return {
+        # Build response
+        response = {
             'prediction': predicted_class,
             'prediction_display': DISPLAY_NAMES.get(predicted_class, predicted_class),
             'confidence': confidence,
@@ -360,6 +388,51 @@ def predict_disease(image_tensor: torch.Tensor):
             'class_probabilities': class_probs,
             'all_classes': CLASS_NAMES
         }
+        
+        # Add location information only if tumor is detected (not for healthy brain)
+        if not is_healthy:
+            location_info = TUMOR_LOCATIONS.get(predicted_class)
+            if location_info:
+                response['location'] = location_info
+            
+            # Generate Grad-CAM visualization for tumor localization
+            if generate_heatmap and original_image is not None:
+                logger.info("Generating Grad-CAM visualization for tumor localization...")
+                sys.stdout.flush()
+                
+                try:
+                    gradcam_result = generate_gradcam_visualization(
+                        model=model,
+                        input_tensor=image_tensor.clone(),  # Clone to avoid gradient issues
+                        original_image=original_image,
+                        device=device,
+                        model_type='custom',
+                        target_class=predicted_class_idx
+                    )
+                    
+                    if gradcam_result.get('success', False):
+                        response['visualization'] = {
+                            'heatmap_overlay': gradcam_result['heatmap_overlay_base64'],
+                            'raw_heatmap': gradcam_result['raw_heatmap_base64'],
+                            'tumor_localization': gradcam_result['localization']
+                        }
+                        logger.info(f"Grad-CAM generated successfully. Tumor region: {gradcam_result['localization'].get('region', 'unknown')}")
+                    else:
+                        logger.warning(f"Grad-CAM failed: {gradcam_result.get('error', 'unknown error')}")
+                        response['visualization'] = None
+                except Exception as gradcam_error:
+                    logger.warning(f"Could not generate Grad-CAM: {gradcam_error}")
+                    response['visualization'] = None
+                    
+                sys.stdout.flush()
+            else:
+                response['visualization'] = None
+        else:
+            # Explicitly set location and visualization to null/None for healthy brain
+            response['location'] = None
+            response['visualization'] = None
+        
+        return response
         
     except Exception as e:
         print(f"Error during prediction: {e}")
@@ -607,11 +680,13 @@ def predict():
         logger.info(f"Image tensor shape: {image_tensor.shape}")
         sys.stdout.flush()
         
-        # Run prediction
-        logger.info("Running prediction...")
+        # Run prediction with Grad-CAM visualization
+        logger.info("Running prediction with Grad-CAM localization...")
         sys.stdout.flush()
-        result = predict_disease(image_tensor)
+        result = predict_disease(image_tensor, original_image=image, generate_heatmap=True)
         logger.info(f"Prediction completed: {result.get('prediction', 'unknown')}")
+        if result.get('visualization'):
+            logger.info(f"Tumor localization: {result['visualization'].get('tumor_localization', {}).get('region', 'N/A')}")
         sys.stdout.flush()
         
         # Explicit memory cleanup to prevent OOM on Render's 512MB limit
@@ -873,8 +948,8 @@ def debug_predict():
         logger.info("Running prediction...")
         sys.stdout.flush()
         
-        # Run actual prediction
-        result = predict_disease(image_tensor)
+        # Run actual prediction (no Grad-CAM for debug endpoint to save memory)
+        result = predict_disease(image_tensor, original_image=image, generate_heatmap=False)
         
         step = "log_result"
         logger.info(f"Prediction result: {result.get('prediction', 'unknown')}")
@@ -1127,18 +1202,15 @@ def predict_from_array():
         # Preprocess image for classification
         image_tensor = preprocess_image_for_classification(image)
         
-        # Free image memory
-        del image
-        image = None
-        gc.collect()
-        
-        logger.info("Running prediction...")
+        logger.info("Running prediction with Grad-CAM localization...")
         sys.stdout.flush()
         
-        # Run prediction
-        result = predict_disease(image_tensor)
+        # Run prediction with Grad-CAM
+        result = predict_disease(image_tensor, original_image=image, generate_heatmap=True)
         
-        # Clean up
+        # Clean up after prediction
+        del image
+        image = None
         del image_tensor
         image_tensor = None
         gc.collect()
@@ -1232,12 +1304,13 @@ def predict_base64():
         
         # Preprocess
         image_tensor = preprocess_image_for_classification(image)
+        
+        # Predict with Grad-CAM
+        result = predict_disease(image_tensor, original_image=image, generate_heatmap=True)
+        
+        # Clean up
         del image
         image = None
-        gc.collect()
-        
-        # Predict
-        result = predict_disease(image_tensor)
         del image_tensor
         image_tensor = None
         gc.collect()
