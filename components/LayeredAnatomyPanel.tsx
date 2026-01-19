@@ -47,7 +47,12 @@ const LayeredAnatomyPanel: React.FC<LayeredAnatomyPanelProps> = ({
     ['Cortex', 'Cerebellum', 'Brainstem', 'Ventricles'].includes(p.id)
   );
   const lobes = state.parts.filter(p => 
-    ['Frontal', 'Parietal', 'Temporal', 'Occipital', 'Insula'].includes(p.id)
+    ['Frontal', 'Parietal', 'Temporal', 'Occipital'].includes(p.id)
+  );
+  const functionalAreas = state.parts.filter(p => 
+    ['VisualArea', 'MotorArea', 'BrocaArea', 'AuditoryArea', 'WernickeArea', 
+     'SensoryArea', 'AssociationArea', 'EmotionalArea', 'OlfactoryArea', 
+     'HigherMentalFunctions'].includes(p.id)
   );
 
   return (
@@ -125,6 +130,44 @@ const LayeredAnatomyPanel: React.FC<LayeredAnatomyPanelProps> = ({
           <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Lobes</div>
           <div className="space-y-1.5">
             {lobes.map(part => (
+              <label
+                key={part.id}
+                className="flex items-center gap-2 p-1.5 rounded hover:bg-zinc-800/50 cursor-pointer transition group"
+              >
+                <input
+                  type="checkbox"
+                  checked={part.visible}
+                  onChange={(e) => onTogglePart(part.id, e.target.checked)}
+                  className="w-3 h-3 accent-emerald-600 cursor-pointer"
+                />
+                <div
+                  className="w-3 h-3 rounded border border-zinc-700"
+                  style={{ backgroundColor: part.color }}
+                />
+                <span className="flex-1 text-xs text-zinc-300 group-hover:text-white transition">
+                  {part.name}
+                </span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                  className="opacity-0 group-hover:opacity-100 transition text-zinc-500 hover:text-emerald-400"
+                  title="Click brain part in 3D view for details"
+                >
+                  <Info size={12} />
+                </button>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Functional Areas */}
+      {functionalAreas.length > 0 && (
+        <div className="mb-3">
+          <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Functional Areas</div>
+          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            {functionalAreas.map(part => (
               <label
                 key={part.id}
                 className="flex items-center gap-2 p-1.5 rounded hover:bg-zinc-800/50 cursor-pointer transition group"

@@ -1,0 +1,35 @@
+# NeuroView Agent - Dependencies
+# Optimized for RTX 4060 6GB VRAM, 16GB RAM
+
+# ============== Core LLM ==============
+# Install llama-cpp-python with CUDA:
+# pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
+llama-cpp-python>=0.2.56
+huggingface-hub>=0.20.0
+
+# ============== API Framework ==============
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+
+# ============== Tools - Web Search ==============
+duckduckgo-search>=4.1.0
+
+# ============== Tools - Wikipedia ==============
+wikipedia-api>=0.6.0
+
+# ============== Tools - HTTP Requests ==============
+requests>=2.31.0
+httpx>=0.26.0
+
+# ============== Utilities ==============
+python-dotenv>=1.0.0
+tqdm>=4.66.0
+
+# ============== Optional: Better Medical Embeddings ==============
+# sentence-transformers>=2.2.2
+
+# ============== Development ==============
+pytest>=7.4.0
+black>=24.1.0
+

@@ -94,6 +94,7 @@ const App: React.FC = () => {
   const [layeredAnatomyState, setLayeredAnatomyState] = useState<LayeredAnatomyState>({
     enabled: false, // OFF BY DEFAULT
     parts: [
+      // Major Structures
       {
         id: 'Cortex',
         name: 'Cortex',
@@ -134,6 +135,7 @@ const App: React.FC = () => {
         function: 'Produce and circulate cerebrospinal fluid (CSF), cushioning the brain and maintaining intracranial pressure.',
         location: 'Four interconnected cavities within the brain'
       },
+      // Lobes
       {
         id: 'Frontal',
         name: 'Frontal Lobe',
@@ -173,6 +175,107 @@ const App: React.FC = () => {
         description: 'Primary visual processing center.',
         function: 'Visual processing, visual perception, color recognition, motion detection, and visual memory.',
         location: 'Posterior portion of each cerebral hemisphere'
+      },
+      // Functional Areas (from the anatomical diagram)
+      {
+        id: 'VisualArea',
+        name: 'Visual Area',
+        color: '#60a5fa', // Light blue
+        visible: true,
+        opacity: 1.0,
+        description: 'Primary visual processing center for sight and image recognition.',
+        function: 'Sight, image recognition, image perception. Processes visual information from the eyes.',
+        location: 'Occipital lobe, posterior portion of brain'
+      },
+      {
+        id: 'MotorArea',
+        name: 'Motor Function Area',
+        color: '#fbbf24', // Yellow/Amber
+        visible: true,
+        opacity: 1.0,
+        description: 'Controls voluntary muscle movement.',
+        function: 'Initiation of voluntary muscles. Controls conscious movement and motor planning.',
+        location: 'Frontal lobe, precentral gyrus'
+      },
+      {
+        id: 'BrocaArea',
+        name: 'Broca\'s Area',
+        color: '#f97316', // Orange
+        visible: true,
+        opacity: 1.0,
+        description: 'Controls speech production and language expression.',
+        function: 'Muscles of speech. Controls speech production, language expression, and articulation.',
+        location: 'Frontal lobe, typically left hemisphere'
+      },
+      {
+        id: 'AuditoryArea',
+        name: 'Auditory Area',
+        color: '#a855f7', // Purple
+        visible: true,
+        opacity: 1.0,
+        description: 'Processes sound and hearing information.',
+        function: 'Hearing. Processes auditory information from the ears.',
+        location: 'Temporal lobe, superior temporal gyrus'
+      },
+      {
+        id: 'WernickeArea',
+        name: 'Wernicke\'s Area',
+        color: '#ec4899', // Pink
+        visible: true,
+        opacity: 1.0,
+        description: 'Language comprehension center.',
+        function: 'Written and spoken language comprehension. Processes and understands language.',
+        location: 'Temporal lobe, typically left hemisphere'
+      },
+      {
+        id: 'SensoryArea',
+        name: 'Sensory Area',
+        color: '#22d3ee', // Cyan
+        visible: true,
+        opacity: 1.0,
+        description: 'Processes sensations from muscles and skin.',
+        function: 'Sensation from muscles and skin. Processes touch, pressure, temperature, and proprioception.',
+        location: 'Parietal lobe, postcentral gyrus'
+      },
+      {
+        id: 'AssociationArea',
+        name: 'Association Area',
+        color: '#34d399', // Emerald
+        visible: true,
+        opacity: 1.0,
+        description: 'Integrates information for memory, emotion, and equilibrium.',
+        function: 'Short-term memory, equilibrium, emotion. Integrates sensory and motor information.',
+        location: 'Distributed across multiple lobes'
+      },
+      {
+        id: 'EmotionalArea',
+        name: 'Emotional Area',
+        color: '#f43f5e', // Rose red
+        visible: true,
+        opacity: 1.0,
+        description: 'Processes emotions, pain, and survival responses.',
+        function: 'Pain, hunger, "fight or flight" response. Processes emotions and survival instincts.',
+        location: 'Limbic system, including amygdala and hypothalamus'
+      },
+      {
+        id: 'OlfactoryArea',
+        name: 'Olfactory Area',
+        color: '#84cc16', // Lime green
+        visible: true,
+        opacity: 1.0,
+        description: 'Processes smell and olfactory information.',
+        function: 'Smelling. Processes olfactory information from the nose.',
+        location: 'Temporal lobe, medial temporal region'
+      },
+      {
+        id: 'HigherMentalFunctions',
+        name: 'Higher Mental Functions',
+        color: '#dc2626', // Red
+        visible: true,
+        opacity: 1.0,
+        description: 'Advanced cognitive processing and executive functions.',
+        function: 'Concentration, planning, judgment, emotional expression, creativity, inhibition. Highest level cognitive functions.',
+        location: 'Prefrontal cortex, frontal lobe'
       }
     ]
   });

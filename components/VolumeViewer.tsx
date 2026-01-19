@@ -44,6 +44,7 @@ const getQualityValue = (quality: RenderQuality): number => {
   }
 };
 
+
 // Keep only the most central large connected component above a given threshold.
 // We bias toward components closer to the volume center so the inner brain mass
 // wins even if outer skin has more voxels.
@@ -472,6 +473,8 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       uniform float uSubsurfaceStrength; // Subsurface scattering strength (0-1)
       uniform sampler2D uTransferFunction; // Transfer function texture (1D, RGBA: value, opacity, R, G, B)
       uniform bool uUseTransferFunction; // Whether to use transfer function
+      uniform bool uLayeredAnatomyEnabled; // Whether layered anatomy mode is enabled
+      uniform float uLayeredAnatomyOpacity; // Overall opacity for layered anatomy coloring
 
       varying vec3 vOrigin;
       varying vec3 vDirection;
@@ -479,6 +482,95 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       // Hash-based random for noise / dithering
       float rand(vec2 co) {
         return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+      }
+
+      // Map 3D position to brain region color
+      vec3 getRegionColor(vec3 pos) {
+        // Normalized position (0-1)
+        float x = pos.x;
+        float y = pos.y;
+        float z = pos.z;
+        
+        // Distance from center
+        vec3 center = vec3(0.5, 0.5, 0.5);
+        float distFromCenter = length(pos - center);
+        
+        // Approximate region mapping based on spatial heuristics
+        // Occipital (posterior) - z > 0.6
+        if (z > 0.6 && y > 0.3 && y < 0.7) {
+          return vec3(0.078, 0.722, 0.651); // #14b8a6 - Occipital/Visual
+        }
+        
+        // Frontal (anterior) - z < 0.4
+        if (z < 0.4 && y > 0.4) {
+          // Higher mental functions (prefrontal) - top front
+          if (y > 0.6) {
+            return vec3(0.863, 0.149, 0.149); // #dc2626 - Higher Mental Functions
+          }
+          // Motor area - mid front
+          if (y > 0.45 && y < 0.6) {
+            return vec3(0.984, 0.749, 0.141); // #fbbf24 - Motor Area
+          }
+          // Broca's area - lower front left
+          if (x < 0.5 && y < 0.5) {
+            return vec3(0.976, 0.451, 0.086); // #f97316 - Broca's Area
+          }
+          return vec3(0.937, 0.267, 0.267); // #ef4444 - Frontal Lobe
+        }
+        
+        // Temporal (lateral) - x extremes
+        if (x < 0.3 || x > 0.7) {
+          // Auditory - mid temporal
+          if (y > 0.4 && y < 0.6) {
+            return vec3(0.659, 0.333, 0.969); // #a855f7 - Auditory Area
+          }
+          // Wernicke's - lower temporal
+          if (y < 0.5 && x < 0.5) {
+            return vec3(0.925, 0.282, 0.604); // #ec4899 - Wernicke's Area
+          }
+          // Olfactory - medial temporal
+          if (y < 0.4) {
+            return vec3(0.518, 0.800, 0.086); // #84cc16 - Olfactory Area
+          }
+          return vec3(0.925, 0.282, 0.604); // #ec4899 - Temporal Lobe
+        }
+        
+        // Parietal (superior) - y > 0.5, middle z
+        if (y > 0.5 && z > 0.4 && z < 0.6) {
+          // Sensory area - postcentral
+          if (z > 0.45) {
+            return vec3(0.133, 0.827, 0.933); // #22d3ee - Sensory Area
+          }
+          return vec3(0.545, 0.345, 0.965); // #8b5cf6 - Parietal Lobe
+        }
+        
+        // Cerebellum (posterior inferior) - z > 0.5, y < 0.3
+        if (z > 0.5 && y < 0.3) {
+          return vec3(0.231, 0.510, 0.965); // #3b82f6 - Cerebellum
+        }
+        
+        // Brainstem (inferior center) - y < 0.2, middle z
+        if (y < 0.2 && z > 0.4 && z < 0.6) {
+          return vec3(0.961, 0.620, 0.043); // #f59e0b - Brainstem
+        }
+        
+        // Ventricles (central) - low density areas near center
+        if (distFromCenter < 0.15) {
+          return vec3(0.024, 0.710, 0.831); // #06b6d4 - Ventricles
+        }
+        
+        // Association areas (distributed) - mid regions
+        if (y > 0.4 && y < 0.6 && distFromCenter > 0.2 && distFromCenter < 0.4) {
+          return vec3(0.204, 0.827, 0.600); // #34d399 - Association Area
+        }
+        
+        // Emotional area (limbic) - deep central
+        if (distFromCenter < 0.25 && y > 0.3 && y < 0.5) {
+          return vec3(0.957, 0.247, 0.369); // #f43f5e - Emotional Area
+        }
+        
+        // Default cortex color
+        return vec3(0.063, 0.725, 0.506); // #10b981 - Cortex
       }
 
       vec2 hitBox(vec3 orig, vec3 dir) {
@@ -503,7 +595,15 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         return texture2D(uTransferFunction, vec2(intensity, 0.5));
       }
 
-      vec3 applyColormap(float t) {
+      vec3 applyColormap(float t, vec3 pos) {
+        // If layered anatomy mode is enabled, use region-based coloring
+        if (uLayeredAnatomyEnabled) {
+          vec3 regionColor = getRegionColor(pos);
+          // Blend with intensity-based color for depth
+          vec3 intensityColor = vec3(t);
+          return mix(intensityColor, regionColor, uLayeredAnatomyOpacity);
+        }
+        
         // If using transfer function, get color from it
         if (uUseTransferFunction) {
           vec4 tf = sampleTransferFunction(t);
@@ -604,7 +704,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
               // Weight by distance (closer samples contribute more)
               float weight = 1.0 / (1.0 + dist * 20.0);
               // Use the color of the sample point (tissue color)
-              vec3 sampleColor = applyColormap(sampleVal);
+              vec3 sampleColor = applyColormap(sampleVal, samplePos);
               sssColor += sampleColor * weight * intensity;
             }
           }
@@ -764,7 +864,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
                   // Ensure smooth shading - normalize for consistent lighting
                   normal = normalize(normal);
                   
-                  vec3 baseColor = applyColormap(val);
+                  vec3 baseColor = applyColormap(val, uv);
                   
                   // Apply PBR lighting optimized for wet organic brain tissue with subsurface scattering
                   vec3 litColor = pbrLighting(normal, viewDir, lightDir, fillLightDir, baseColor, uv, val);
@@ -792,7 +892,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
                }
                
                if (alpha > 0.0) {
-                   vec3 rgb = applyColormap(val);
+                   vec3 rgb = applyColormap(val, uv);
                    
                    // Apply lighting for volumetric rendering
                    vec3 normal = calculateGradient(uv);
@@ -866,7 +966,10 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         uSubsurfaceScattering: { value: subsurfaceScattering },
         uSubsurfaceStrength: { value: subsurfaceStrength },
         uTransferFunction: { value: tfTexture || defaultTfTexture },
-        uUseTransferFunction: { value: tfTexture !== null }
+        uUseTransferFunction: { value: tfTexture !== null },
+        // Layered Anatomy Mode
+        uLayeredAnatomyEnabled: { value: layeredAnatomyState?.enabled || false },
+        uLayeredAnatomyOpacity: { value: 0.85 } // Blend strength for region colors
       },
       vertexShader,
       fragmentShader,
@@ -1090,6 +1193,18 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
           } else {
             materialRef.current.uniforms.uUseTransferFunction.value = false;
           }
+          
+          // Update layered anatomy uniforms
+          if (layeredAnatomyState) {
+            materialRef.current.uniforms.uLayeredAnatomyEnabled.value = layeredAnatomyState.enabled;
+            // Opacity can be adjusted based on visible parts count or user preference
+            const visiblePartsCount = layeredAnatomyState.parts.filter(p => p.visible).length;
+            const opacity = visiblePartsCount > 0 ? 0.85 : 0.0;
+            materialRef.current.uniforms.uLayeredAnatomyOpacity.value = opacity;
+          } else {
+            materialRef.current.uniforms.uLayeredAnatomyEnabled.value = false;
+            materialRef.current.uniforms.uLayeredAnatomyOpacity.value = 0.0;
+          }
       }
 
       // Update Slice Plane Positions
@@ -1119,7 +1234,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
            }
       }
 
-  }, [threshold, brightness, renderStyle, colorMap, slices, primaryVolume, cutPlane, preset, renderQuality, subsurfaceScattering, subsurfaceStrength, transferFunction]);
+  }, [threshold, brightness, renderStyle, colorMap, slices, primaryVolume, cutPlane, preset, renderQuality, subsurfaceScattering, subsurfaceStrength, transferFunction, layeredAnatomyState]);
 
   // Update crosshair position when it changes
   useEffect(() => {
