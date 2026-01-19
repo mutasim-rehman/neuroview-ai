@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VolumeData, VolumeRenderStyle, ColorMap, TissuePreset, RenderQuality, TransferFunction, CrosshairPosition, LayeredAnatomyState, BrainPart } from '../types';
 import { apply3DGaussianBlur } from '../utils/volumeBlur';
+import { generateBrainAtlasMask } from '../services/brainAtlasService';
 
 interface VolumeViewerProps {
   volumes: VolumeData[];
@@ -250,6 +251,89 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
   const coronalPlaneRef = useRef<THREE.Mesh | null>(null);
   const crosshairGroupRef = useRef<THREE.Group | null>(null);
   const scaleRef = useRef<THREE.Vector3 | null>(null);
+  
+  // Atlas mask texture refs
+  const atlasMaskTextureRef = useRef<THREE.Data3DTexture | null>(null);
+  const regionColorLookupTextureRef = useRef<THREE.DataTexture | null>(null);
+
+  // Generate atlas masks when layered anatomy state changes
+  useMemo(() => {
+    if (!primaryVolume || !layeredAnatomyState?.enabled || !layeredAnatomyState.useAtlasSegmentation) {
+      atlasMaskTextureRef.current = null;
+      regionColorLookupTextureRef.current = null;
+      return;
+    }
+
+    const { dims } = primaryVolume.header;
+    const xDim = dims[1];
+    const yDim = dims[2];
+    const zDim = dims[3];
+
+    const visiblePartIds = layeredAnatomyState.isolatedPartId 
+      ? [layeredAnatomyState.isolatedPartId]
+      : layeredAnatomyState.parts.filter(p => p.visible).map(p => p.id);
+    
+    if (visiblePartIds.length === 0) {
+      atlasMaskTextureRef.current = null;
+      regionColorLookupTextureRef.current = null;
+      return;
+    }
+
+    const { mask, regions } = generateBrainAtlasMask(primaryVolume, visiblePartIds);
+    
+    // Create color lookup texture
+    const maxRegions = 256;
+    const colorLookupData = new Float32Array(maxRegions * 3);
+    colorLookupData.fill(0);
+    
+    regions.forEach(region => {
+      const hex = region.color;
+      const r = parseInt(hex.slice(1, 3), 16) / 255;
+      const g = parseInt(hex.slice(3, 5), 16) / 255;
+      const b = parseInt(hex.slice(5, 7), 16) / 255;
+      
+      const idx = region.label;
+      if (idx < maxRegions) {
+        colorLookupData[idx * 3] = r;
+        colorLookupData[idx * 3 + 1] = g;
+        colorLookupData[idx * 3 + 2] = b;
+      }
+    });
+    
+    // Dispose old textures
+    if (regionColorLookupTextureRef.current) {
+      regionColorLookupTextureRef.current.dispose();
+    }
+    if (atlasMaskTextureRef.current) {
+      atlasMaskTextureRef.current.dispose();
+    }
+    
+    regionColorLookupTextureRef.current = new THREE.DataTexture(
+      colorLookupData,
+      maxRegions,
+      1,
+      THREE.RGBFormat,
+      THREE.FloatType
+    );
+    regionColorLookupTextureRef.current.minFilter = THREE.NearestFilter;
+    regionColorLookupTextureRef.current.magFilter = THREE.NearestFilter;
+    regionColorLookupTextureRef.current.wrapS = THREE.ClampToEdgeWrapping;
+    regionColorLookupTextureRef.current.needsUpdate = true;
+    
+    // Create mask texture
+    const maskFloatData = new Float32Array(mask.length);
+    for (let i = 0; i < mask.length; i++) {
+      maskFloatData[i] = mask[i] / 255.0;
+    }
+    
+    atlasMaskTextureRef.current = new THREE.Data3DTexture(maskFloatData, xDim, yDim, zDim);
+    atlasMaskTextureRef.current.format = THREE.RedFormat;
+    atlasMaskTextureRef.current.type = THREE.FloatType;
+    atlasMaskTextureRef.current.minFilter = THREE.LinearFilter;
+    atlasMaskTextureRef.current.magFilter = THREE.LinearFilter;
+    atlasMaskTextureRef.current.unpackAlignment = 1;
+    atlasMaskTextureRef.current.needsUpdate = true;
+  }, [primaryVolume, layeredAnatomyState]);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -475,6 +559,9 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       uniform bool uUseTransferFunction; // Whether to use transfer function
       uniform bool uLayeredAnatomyEnabled; // Whether layered anatomy mode is enabled
       uniform float uLayeredAnatomyOpacity; // Overall opacity for layered anatomy coloring
+      uniform sampler3D uAtlasMask; // 3D mask texture (region labels)
+      uniform sampler2D uRegionColorLookup; // 1D color lookup texture (maps region label to RGB)
+      uniform bool uUseAtlasSegmentation; // Whether to use atlas-based segmentation
 
       varying vec3 vOrigin;
       varying vec3 vDirection;
@@ -486,6 +573,22 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
 
       // Map 3D position to brain region color
       vec3 getRegionColor(vec3 pos) {
+        // If atlas segmentation is available, use it (more accurate)
+        if (uUseAtlasSegmentation) {
+          float regionLabel = texture(uAtlasMask, pos).r * 255.0; // Get region label (0-255)
+          
+          if (regionLabel > 0.5) { // Valid region (non-zero)
+            // Lookup color from region color lookup texture
+            // Normalize label to 0-1 for texture lookup
+            float lookupCoord = regionLabel / 255.0;
+            vec3 regionColor = texture2D(uRegionColorLookup, vec2(lookupCoord, 0.5)).rgb;
+            return regionColor;
+          }
+          // No region assigned, return default
+          return vec3(0.063, 0.725, 0.506); // Default cortex color
+        }
+        
+        // Fallback to spatial heuristics (less accurate but works without atlas)
         // Normalized position (0-1)
         float x = pos.x;
         float y = pos.y;
@@ -969,7 +1072,11 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         uUseTransferFunction: { value: tfTexture !== null },
         // Layered Anatomy Mode
         uLayeredAnatomyEnabled: { value: layeredAnatomyState?.enabled || false },
-        uLayeredAnatomyOpacity: { value: 0.85 } // Blend strength for region colors
+        uLayeredAnatomyOpacity: { value: 0.85 }, // Blend strength for region colors
+        // Atlas-based segmentation
+        uAtlasMask: { value: atlasMaskTextureRef.current },
+        uRegionColorLookup: { value: regionColorLookupTextureRef.current },
+        uUseAtlasSegmentation: { value: atlasMaskTextureRef.current !== null }
       },
       vertexShader,
       fragmentShader,
@@ -1201,9 +1308,17 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
             const visiblePartsCount = layeredAnatomyState.parts.filter(p => p.visible).length;
             const opacity = visiblePartsCount > 0 ? 0.85 : 0.0;
             materialRef.current.uniforms.uLayeredAnatomyOpacity.value = opacity;
+            
+            // Update atlas mask textures
+            materialRef.current.uniforms.uAtlasMask.value = atlasMaskTextureRef.current;
+            materialRef.current.uniforms.uRegionColorLookup.value = regionColorLookupTextureRef.current;
+            materialRef.current.uniforms.uUseAtlasSegmentation.value = atlasMaskTextureRef.current !== null;
           } else {
             materialRef.current.uniforms.uLayeredAnatomyEnabled.value = false;
             materialRef.current.uniforms.uLayeredAnatomyOpacity.value = 0.0;
+            materialRef.current.uniforms.uAtlasMask.value = null;
+            materialRef.current.uniforms.uRegionColorLookup.value = null;
+            materialRef.current.uniforms.uUseAtlasSegmentation.value = false;
           }
       }
 

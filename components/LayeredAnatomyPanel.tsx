@@ -1,5 +1,5 @@
 import React from 'react';
-import { Brain, X, Info } from 'lucide-react';
+import { Brain, X, Info, Focus } from 'lucide-react';
 import { BrainPart, LayeredAnatomyState } from '../types';
 
 interface LayeredAnatomyPanelProps {
@@ -8,6 +8,7 @@ interface LayeredAnatomyPanelProps {
   onTogglePart: (partId: string, visible: boolean) => void;
   onShowAll: () => void;
   onHideAll: () => void;
+  onIsolatePart: (partId: string | null) => void;
   selectedPart: BrainPart | null;
   onClearSelection: () => void;
 }
@@ -18,6 +19,7 @@ const LayeredAnatomyPanel: React.FC<LayeredAnatomyPanelProps> = ({
   onTogglePart,
   onShowAll,
   onHideAll,
+  onIsolatePart,
   selectedPart,
   onClearSelection
 }) => {
@@ -87,6 +89,26 @@ const LayeredAnatomyPanel: React.FC<LayeredAnatomyPanelProps> = ({
         </button>
       </div>
 
+      {/* Isolation Mode Indicator */}
+      {state.isolatedPartId && (
+        <div className="mb-3 p-2 bg-emerald-900/30 border border-emerald-700/50 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Focus size={14} className="text-emerald-400" />
+              <span className="text-xs text-emerald-300">
+                Isolated: {state.parts.find(p => p.id === state.isolatedPartId)?.name || 'Unknown'}
+              </span>
+            </div>
+            <button
+              onClick={() => onIsolatePart(null)}
+              className="text-xs px-2 py-1 rounded bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 transition"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Major Structures */}
       <div className="mb-3">
         <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Major Structures</div>
@@ -109,16 +131,32 @@ const LayeredAnatomyPanel: React.FC<LayeredAnatomyPanelProps> = ({
               <span className="flex-1 text-xs text-zinc-300 group-hover:text-white transition">
                 {part.name}
               </span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // Info will be shown via hover/click on 3D model
-                }}
-                className="opacity-0 group-hover:opacity-100 transition text-zinc-500 hover:text-emerald-400"
-                title="Click brain part in 3D view for details"
-              >
-                <Info size={12} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onIsolatePart(state.isolatedPartId === part.id ? null : part.id);
+                  }}
+                  className={`opacity-0 group-hover:opacity-100 transition ${
+                    state.isolatedPartId === part.id
+                      ? 'opacity-100 text-emerald-400'
+                      : 'text-zinc-500 hover:text-emerald-400'
+                  }`}
+                  title={state.isolatedPartId === part.id ? 'Clear isolation' : 'Isolate this part'}
+                >
+                  <Focus size={12} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Info will be shown via hover/click on 3D model
+                  }}
+                  className="opacity-0 group-hover:opacity-100 transition text-zinc-500 hover:text-emerald-400"
+                  title="Click brain part in 3D view for details"
+                >
+                  <Info size={12} />
+                </button>
+              </div>
             </label>
           ))}
         </div>
