@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { parseNifti, createVolumeData, extractTimePoint } from './utils/niftiLoader';
-import { VolumeData, ViewType, RenderMode, VolumeRenderStyle, ColorMap, ToolMode, Measurement, Annotation, TissuePreset, ROIStats, OverlayMode, TimeSeriesState, RenderQuality, TransferFunction, CrosshairPosition } from './types';
+import { VolumeData, ViewType, RenderMode, VolumeRenderStyle, ColorMap, ToolMode, Measurement, Annotation, TissuePreset, ROIStats, OverlayMode, TimeSeriesState, RenderQuality, TransferFunction, CrosshairPosition, LayeredAnatomyState, BrainPart } from './types';
 import Viewer from './components/Viewer';
 import VolumeViewer from './components/VolumeViewer';
 import FileUpload from './components/FileUpload';
 import HistogramPanel from './components/HistogramPanel';
 import BrainHealthPanel from './components/BrainHealthPanel';
 import TransferFunctionEditor from './components/TransferFunctionEditor';
+import LayeredAnatomyPanel from './components/LayeredAnatomyPanel';
 // ⚠️ IMPORTANT: All model access is through API only - no direct model imports
 // The brainHealthService only makes HTTP calls to the backend API
 import { predictFromVolumeData, checkApiHealth, BrainHealthPrediction } from './services/brainHealthService';
@@ -88,6 +89,94 @@ const App: React.FC = () => {
   const [isPredicting, setIsPredicting] = useState(false);
   const [predictionError, setPredictionError] = useState<string | null>(null);
   const [apiHealth, setApiHealth] = useState<{ status: string; model_loaded: boolean } | null>(null);
+
+  // Layered Anatomy State (OFF BY DEFAULT)
+  const [layeredAnatomyState, setLayeredAnatomyState] = useState<LayeredAnatomyState>({
+    enabled: false, // OFF BY DEFAULT
+    parts: [
+      {
+        id: 'Cortex',
+        name: 'Cortex',
+        color: '#10b981', // Emerald green
+        visible: true,
+        opacity: 1.0,
+        description: 'The outer layer of the brain responsible for higher cognitive functions.',
+        function: 'Higher cognition, perception, voluntary movement, language processing, memory, and consciousness.',
+        location: 'Outer surface of the cerebral hemispheres'
+      },
+      {
+        id: 'Cerebellum',
+        name: 'Cerebellum',
+        color: '#3b82f6', // Blue
+        visible: true,
+        opacity: 1.0,
+        description: 'Coordinates movement, balance, and motor learning.',
+        function: 'Coordination, balance, motor learning, timing, and fine motor control.',
+        location: 'Posterior to the brainstem, below the occipital lobes'
+      },
+      {
+        id: 'Brainstem',
+        name: 'Brainstem',
+        color: '#f59e0b', // Amber/orange
+        visible: true,
+        opacity: 1.0,
+        description: 'Controls vital functions like breathing, heart rate, and consciousness.',
+        function: 'Vital functions: breathing, heart rate, blood pressure, arousal, sleep-wake cycles. Contains cranial nerve pathways.',
+        location: 'Connects brain to spinal cord, located at the base of the brain'
+      },
+      {
+        id: 'Ventricles',
+        name: 'Ventricles',
+        color: '#06b6d4', // Cyan
+        visible: true,
+        opacity: 1.0,
+        description: 'CSF-filled spaces that cushion the brain and circulate cerebrospinal fluid.',
+        function: 'Produce and circulate cerebrospinal fluid (CSF), cushioning the brain and maintaining intracranial pressure.',
+        location: 'Four interconnected cavities within the brain'
+      },
+      {
+        id: 'Frontal',
+        name: 'Frontal Lobe',
+        color: '#ef4444', // Red
+        visible: true,
+        opacity: 1.0,
+        description: 'Planning, decision-making, motor control, and speech production.',
+        function: 'Executive functions, planning, decision-making, problem-solving, motor control, speech production (Broca\'s area), personality, and social behavior.',
+        location: 'Anterior portion of each cerebral hemisphere'
+      },
+      {
+        id: 'Parietal',
+        name: 'Parietal Lobe',
+        color: '#8b5cf6', // Purple
+        visible: true,
+        opacity: 1.0,
+        description: 'Somatosensory processing and spatial awareness.',
+        function: 'Somatosensory processing (touch, temperature, pain), spatial awareness, attention, integration of sensory information, and mathematical reasoning.',
+        location: 'Superior and posterior to the frontal lobe'
+      },
+      {
+        id: 'Temporal',
+        name: 'Temporal Lobe',
+        color: '#ec4899', // Pink
+        visible: true,
+        opacity: 1.0,
+        description: 'Hearing, memory formation, and language comprehension.',
+        function: 'Hearing, auditory processing, memory formation (hippocampus), language comprehension (Wernicke\'s area), emotion, and visual recognition.',
+        location: 'Lateral portion of each cerebral hemisphere, below the frontal and parietal lobes'
+      },
+      {
+        id: 'Occipital',
+        name: 'Occipital Lobe',
+        color: '#14b8a6', // Teal
+        visible: true,
+        opacity: 1.0,
+        description: 'Primary visual processing center.',
+        function: 'Visual processing, visual perception, color recognition, motion detection, and visual memory.',
+        location: 'Posterior portion of each cerebral hemisphere'
+      }
+    ]
+  });
+  const [selectedBrainPart, setSelectedBrainPart] = useState<BrainPart | null>(null);
 
   // Get active volume or first volume
   const activeVolume = useMemo(() => {
@@ -463,6 +552,8 @@ const App: React.FC = () => {
                                     onCrosshairChange={setCrosshairPosition}
                                     subsurfaceScattering={subsurfaceScattering}
                                     subsurfaceStrength={subsurfaceStrength}
+                                    layeredAnatomyState={layeredAnatomyState}
+                                    onBrainPartSelect={setSelectedBrainPart}
                                 />
                             </div>
                         </div>
@@ -523,6 +614,8 @@ const App: React.FC = () => {
                                 onCrosshairChange={crosshairEnabled ? setCrosshairPosition : undefined}
                                 subsurfaceScattering={subsurfaceScattering}
                                 subsurfaceStrength={subsurfaceStrength}
+                                layeredAnatomyState={layeredAnatomyState}
+                                onBrainPartSelect={setSelectedBrainPart}
                             />
                         </div>
                     )}
@@ -541,6 +634,36 @@ const App: React.FC = () => {
                 {rightSidebarOpen && (
                 <aside className="w-72 bg-zinc-950 border-l border-zinc-800 flex flex-col p-3 overflow-y-auto flex-shrink-0">
                     
+                    {/* Layered Anatomy Panel */}
+                    <LayeredAnatomyPanel
+                        state={layeredAnatomyState}
+                        onToggleMode={(enabled) => {
+                            setLayeredAnatomyState(prev => ({ ...prev, enabled }));
+                        }}
+                        onTogglePart={(partId, visible) => {
+                            setLayeredAnatomyState(prev => ({
+                                ...prev,
+                                parts: prev.parts.map(p => 
+                                    p.id === partId ? { ...p, visible } : p
+                                )
+                            }));
+                        }}
+                        onShowAll={() => {
+                            setLayeredAnatomyState(prev => ({
+                                ...prev,
+                                parts: prev.parts.map(p => ({ ...p, visible: true }))
+                            }));
+                        }}
+                        onHideAll={() => {
+                            setLayeredAnatomyState(prev => ({
+                                ...prev,
+                                parts: prev.parts.map(p => ({ ...p, visible: false }))
+                            }));
+                        }}
+                        selectedPart={selectedBrainPart}
+                        onClearSelection={() => setSelectedBrainPart(null)}
+                    />
+
                     {/* Brain Health Prediction */}
                     <div className="mb-4 p-3 bg-gradient-to-br from-emerald-950/30 to-zinc-900 rounded-lg border border-emerald-800/30">
                         <div className="flex items-center gap-2 mb-3">

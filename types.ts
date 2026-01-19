@@ -228,6 +228,25 @@ export enum RenderQuality {
   ULTRA = 'Ultra'
 }
 
+// Layered Anatomy (MVP)
+export type AnatomyLayerId =
+  | 'cortex'
+  | 'cerebellum'
+  | 'brainstem'
+  | 'ventricles'
+  | 'frontal_lobe'
+  | 'parietal_lobe'
+  | 'temporal_lobe'
+  | 'occipital_lobe';
+
+export interface AnatomyLayer {
+  id: AnatomyLayerId;
+  label: string;
+  color: string; // Hex
+  whatItDoes: string;
+  whereItIs?: string;
+}
+
 // Histogram Data
 export interface HistogramData {
   bins: number[];
@@ -256,4 +275,21 @@ export interface CrosshairPosition {
   y: number;
   z: number;
   visible: boolean;
+}
+
+// Layered Anatomy Mode
+export interface BrainPart {
+  id: string;
+  name: string;
+  color: string; // Hex color
+  visible: boolean;
+  opacity: number; // 0-1
+  description: string; // "What it does" - functional description
+  function?: string; // Detailed function description
+  location?: string; // Anatomical location description
+}
+
+export interface LayeredAnatomyState {
+  enabled: boolean; // Mode toggle (off by default)
+  parts: BrainPart[];
 }

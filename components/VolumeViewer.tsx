@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { VolumeData, VolumeRenderStyle, ColorMap, TissuePreset, RenderQuality, TransferFunction, CrosshairPosition } from '../types';
+import { VolumeData, VolumeRenderStyle, ColorMap, TissuePreset, RenderQuality, TransferFunction, CrosshairPosition, LayeredAnatomyState, BrainPart } from '../types';
 import { apply3DGaussianBlur } from '../utils/volumeBlur';
 
 interface VolumeViewerProps {
@@ -28,6 +28,9 @@ interface VolumeViewerProps {
   // Subsurface scattering controls
   subsurfaceScattering?: boolean;
   subsurfaceStrength?: number; // 0-1
+  // Layered Anatomy Mode
+  layeredAnatomyState?: LayeredAnatomyState;
+  onBrainPartSelect?: (part: BrainPart | null) => void;
 }
 
 // Helper to convert RenderQuality enum to shader value
@@ -225,7 +228,9 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
   crosshairPosition,
   onCrosshairChange,
   subsurfaceScattering = false,
-  subsurfaceStrength = 0.5
+  subsurfaceStrength = 0.5,
+  layeredAnatomyState,
+  onBrainPartSelect
 }) => {
   // Use first visible volume as primary
   const primaryVolume = volumes.find(v => v.metadata.visible) || volumes[0];
