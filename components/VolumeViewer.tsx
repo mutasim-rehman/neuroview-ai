@@ -946,12 +946,17 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
     defaultTfTexture.magFilter = THREE.LinearFilter;
     defaultTfTexture.needsUpdate = true;
 
+    // Calculate initial render style index based on prop
+    let initialStyleIdx = 2; // Default to VOL
+    if (renderStyle === VolumeRenderStyle.MIP) initialStyleIdx = 0;
+    else if (renderStyle === VolumeRenderStyle.ISO) initialStyleIdx = 1;
+    
     const material = new THREE.ShaderMaterial({
       uniforms: {
         uVolume: { value: texture },
         uThreshold: { value: 0.1 },
         uBrightness: { value: 0.0 },
-        uRenderStyle: { value: 2 },
+        uRenderStyle: { value: initialStyleIdx },
         uColorMap: { value: 4 },
         uCutPlane: { value: 1.0 },
         uLightDir: { value: new THREE.Vector3(0.5, 0.8, 0.3).normalize() },
