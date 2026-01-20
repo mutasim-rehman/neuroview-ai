@@ -93,8 +93,6 @@ const App: React.FC = () => {
   // Layered Anatomy State (OFF BY DEFAULT)
   const [layeredAnatomyState, setLayeredAnatomyState] = useState<LayeredAnatomyState>({
     enabled: false, // OFF BY DEFAULT
-    isolatedPartId: null, // No part isolated by default
-    useAtlasSegmentation: true, // Use atlas-based segmentation
     parts: [
       // Major Structures
       {
@@ -743,20 +741,14 @@ const App: React.FC = () => {
                     <LayeredAnatomyPanel
                         state={layeredAnatomyState}
                         onToggleMode={(enabled) => {
-                            setLayeredAnatomyState(prev => ({ 
-                                ...prev, 
-                                enabled,
-                                isolatedPartId: enabled ? prev.isolatedPartId : null // Clear isolation when disabling
-                            }));
+                            setLayeredAnatomyState(prev => ({ ...prev, enabled }));
                         }}
                         onTogglePart={(partId, visible) => {
                             setLayeredAnatomyState(prev => ({
                                 ...prev,
                                 parts: prev.parts.map(p => 
                                     p.id === partId ? { ...p, visible } : p
-                                ),
-                                // Clear isolation if hiding the isolated part
-                                isolatedPartId: prev.isolatedPartId === partId && !visible ? null : prev.isolatedPartId
+                                )
                             }));
                         }}
                         onShowAll={() => {
@@ -768,19 +760,7 @@ const App: React.FC = () => {
                         onHideAll={() => {
                             setLayeredAnatomyState(prev => ({
                                 ...prev,
-                                parts: prev.parts.map(p => ({ ...p, visible: false })),
-                                isolatedPartId: null // Clear isolation when hiding all
-                            }));
-                        }}
-                        onIsolatePart={(partId) => {
-                            setLayeredAnatomyState(prev => ({
-                                ...prev,
-                                isolatedPartId: partId,
-                                // When isolating, make sure the isolated part is visible
-                                parts: prev.parts.map(p => ({
-                                    ...p,
-                                    visible: partId === null ? p.visible : (p.id === partId ? true : false)
-                                }))
+                                parts: prev.parts.map(p => ({ ...p, visible: false }))
                             }));
                         }}
                         selectedPart={selectedBrainPart}

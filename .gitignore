@@ -90,3 +90,8 @@ coverage/
 
 # TypeScript
 *.tsbuildinfo
+
+# Training artifacts and logs
+ai-training/checkpoints/
+ai-training/logs/
+logs/

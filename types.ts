@@ -292,6 +292,4 @@ export interface BrainPart {
 export interface LayeredAnatomyState {
   enabled: boolean; // Mode toggle (off by default)
   parts: BrainPart[];
-  isolatedPartId: string | null; // When set, only show this part (isolate mode)
-  useAtlasSegmentation: boolean; // Use atlas-based segmentation instead of spatial heuristics
 }
