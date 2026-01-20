@@ -39,7 +39,7 @@ const App: React.FC = () => {
   const [brightness, setBrightness] = useState(0);
   const [contrast, setContrast] = useState(0);
   const [threshold, setThreshold] = useState(0.1);
-  const [volumeStyle, setVolumeStyle] = useState<VolumeRenderStyle>(VolumeRenderStyle.VOL);
+  const [volumeStyle, setVolumeStyle] = useState<VolumeRenderStyle>(VolumeRenderStyle.MIP);
   const [colorMap, setColorMap] = useState<ColorMap>(ColorMap.ANATOMY);
   const [tissuePreset, setTissuePreset] = useState<TissuePreset>(TissuePreset.CUSTOM);
   const [roiStats, setRoiStats] = useState<ROIStats | null>(null);
@@ -62,8 +62,8 @@ const App: React.FC = () => {
   });
   const [subsurfaceScattering, setSubsurfaceScattering] = useState(false);
   const [subsurfaceStrength, setSubsurfaceStrength] = useState(0.5);
-  const [crosshairEnabled, setCrosshairEnabled] = useState(true);
-  const [transferFunctionEditorVisible, setTransferFunctionEditorVisible] = useState(true);
+  const [crosshairEnabled, setCrosshairEnabled] = useState(false);
+  const [transferFunctionEditorVisible, setTransferFunctionEditorVisible] = useState(false);
 
   // Tools
   const [toolMode, setToolMode] = useState<ToolMode>(ToolMode.POINTER);
