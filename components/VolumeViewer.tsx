@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VolumeData, VolumeRenderStyle, ColorMap, TissuePreset, RenderQuality, TransferFunction, CrosshairPosition, LayeredAnatomyState, BrainPart } from '../types';
 import { apply3DGaussianBlur } from '../utils/volumeBlur';
+import { segmentTissues, createSegmentationTexture, RegionId } from '../utils/tissueSegmentation';
 
 interface VolumeViewerProps {
   volumes: VolumeData[];
@@ -337,6 +338,25 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
     texture.unpackAlignment = 1;
     texture.needsUpdate = true;
 
+    // Generate intensity-based tissue segmentation mask
+    let segmentationTexture: THREE.Data3DTexture | null = null;
+    if (layeredAnatomyState?.enabled) {
+      try {
+        const segmentation = segmentTissues(primaryVolume, {
+          useHistogramAnalysis: true
+        });
+        segmentationTexture = createSegmentationTexture(
+          segmentation.mask,
+          xDim,
+          yDim,
+          zDim
+        );
+        console.log('Segmentation stats:', segmentation.stats);
+      } catch (error) {
+        console.error('Failed to generate segmentation mask:', error);
+      }
+    }
+
     // Create transfer function texture (1D, 256 pixels wide)
     const createTransferFunctionTexture = (tf: TransferFunction | undefined): THREE.DataTexture | null => {
       if (!tf || !tf.enabled || tf.points.length === 0) {
@@ -475,6 +495,8 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       uniform bool uUseTransferFunction; // Whether to use transfer function
       uniform bool uLayeredAnatomyEnabled; // Whether layered anatomy mode is enabled
       uniform float uLayeredAnatomyOpacity; // Overall opacity for layered anatomy coloring
+      uniform sampler3D uSegmentationMask; // Segmentation mask texture (RegionId values)
+      uniform bool uUseSegmentationMask; // Whether to use segmentation mask
 
       varying vec3 vOrigin;
       varying vec3 vDirection;
@@ -484,41 +506,43 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
       }
 
-      // Convert hex color string to RGB - Textbook-style vibrant colors
-      // Region IDs: 0=Cortex, 1=Cerebellum, 2=Brainstem, 3=Ventricles, 4=Frontal, 5=Parietal, 6=Temporal, 7=Occipital,
-      // 8=VisualArea, 9=MotorArea, 10=BrocaArea, 11=AuditoryArea, 12=WernickeArea, 13=SensoryArea, 
-      // 14=AssociationArea, 15=EmotionalArea, 16=OlfactoryArea, 17=HigherMentalFunctions
+      // Map RegionId to color - Medical textbook style
+      // RegionId: 0=Background, 1=Ventricles, 2=Cortex, 3=WhiteMatter, 4=Cerebellum,
+      // 5=Brainstem, 6=FrontalLobe, 7=ParietalLobe, 8=TemporalLobe, 9=OccipitalLobe
       vec3 getRegionColorById(int regionId) {
         // Vibrant, distinct colors like medical textbooks
-        vec3 colors[18];
-        colors[0] = vec3(0.2, 0.8, 0.4); // Cortex (bright emerald green)
-        colors[1] = vec3(0.2, 0.5, 1.0); // Cerebellum (bright blue)
-        colors[2] = vec3(1.0, 0.65, 0.0); // Brainstem (bright amber/orange)
-        colors[3] = vec3(0.0, 0.8, 1.0); // Ventricles (bright cyan)
-        colors[4] = vec3(1.0, 0.2, 0.2); // Frontal Lobe (bright red)
-        colors[5] = vec3(0.6, 0.3, 1.0); // Parietal Lobe (bright purple)
-        colors[6] = vec3(1.0, 0.3, 0.7); // Temporal Lobe (bright pink/magenta)
-        colors[7] = vec3(0.0, 0.8, 0.7); // Occipital Lobe (bright teal)
-        colors[8] = vec3(0.4, 0.7, 1.0); // Visual Area (sky blue)
-        colors[9] = vec3(1.0, 0.85, 0.0); // Motor Area (bright yellow)
-        colors[10] = vec3(1.0, 0.5, 0.0); // Broca's Area (bright orange)
-        colors[11] = vec3(0.7, 0.3, 1.0); // Auditory Area (vibrant purple)
-        colors[12] = vec3(1.0, 0.4, 0.8); // Wernicke's Area (bright pink)
-        colors[13] = vec3(0.0, 0.9, 1.0); // Sensory Area (bright cyan)
-        colors[14] = vec3(0.3, 0.9, 0.5); // Association Area (bright green)
-        colors[15] = vec3(1.0, 0.2, 0.5); // Emotional Area (bright rose)
-        colors[16] = vec3(0.6, 1.0, 0.2); // Olfactory Area (bright lime)
-        colors[17] = vec3(0.9, 0.1, 0.1); // Higher Mental Functions (deep red)
+        vec3 colors[10];
+        colors[0] = vec3(0.0, 0.0, 0.0); // Background (black)
+        colors[1] = vec3(0.0, 0.8, 1.0); // Ventricles (bright cyan - CSF)
+        colors[2] = vec3(0.2, 0.8, 0.4); // Cortex (bright emerald green - gray matter)
+        colors[3] = vec3(1.0, 0.9, 0.7); // White Matter (light cream/beige)
+        colors[4] = vec3(0.2, 0.5, 1.0); // Cerebellum (bright blue)
+        colors[5] = vec3(1.0, 0.65, 0.0); // Brainstem (bright amber/orange)
+        colors[6] = vec3(1.0, 0.2, 0.2); // Frontal Lobe (bright red)
+        colors[7] = vec3(0.6, 0.3, 1.0); // Parietal Lobe (bright purple)
+        colors[8] = vec3(1.0, 0.3, 0.7); // Temporal Lobe (bright pink/magenta)
+        colors[9] = vec3(0.0, 0.8, 0.7); // Occipital Lobe (bright teal)
         
-        if (regionId >= 0 && regionId < 18) {
+        if (regionId >= 0 && regionId < 10) {
           return colors[regionId];
         }
-        return colors[0]; // Default to cortex
+        return colors[2]; // Default to cortex
       }
 
-      // Improved anatomical region mapping with intensity-based detection
-      // Returns region ID (-1 for no region/background)
-      int getRegionId(vec3 pos, float intensity) {
+      // Get region ID from segmentation mask (medical differentiation)
+      // Returns region ID from segmentation mask texture
+      int getRegionIdFromMask(vec3 pos) {
+        if (!uUseSegmentationMask) {
+          return -1; // No mask available
+        }
+        // Sample segmentation mask (returns RegionId value 0-9)
+        float regionValue = texture(uSegmentationMask, pos).r;
+        return int(regionValue * 255.0 + 0.5); // Convert from 0-1 to 0-255 integer
+      }
+
+      // Fallback: Improved anatomical region mapping with intensity-based detection
+      // Used when segmentation mask is not available
+      int getRegionIdFromHeuristics(vec3 pos, float intensity) {
         float x = pos.x;
         float y = pos.y;
         float z = pos.z;
@@ -527,91 +551,59 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         float distFromCenter = length(pos - center);
         
         // VENTRICLES: Low intensity central areas (CSF-filled spaces)
-        // Check intensity first - ventricles are dark (low intensity) in T1 scans
         if (intensity < 0.25 && distFromCenter < 0.2 && y > 0.25 && y < 0.75) {
-          return 3; // Ventricles
+          return 1; // Ventricles (RegionId.VENTRICLES)
         }
         
         // BRAINSTEM: Inferior center, small structure
         if (y < 0.25 && z > 0.35 && z < 0.65 && distFromCenter < 0.15) {
-          return 2; // Brainstem
+          return 5; // Brainstem (RegionId.BRAINSTEM)
         }
         
         // CEREBELLUM: Posterior inferior, distinctive shape
         if (z > 0.55 && y < 0.35 && distFromCenter > 0.15) {
-          return 1; // Cerebellum
+          return 4; // Cerebellum (RegionId.CEREBELLUM)
         }
         
-        // OCCIPITAL LOBE (posterior) - z > 0.6
+        // OCCIPITAL LOBE (posterior)
         if (z > 0.6 && y > 0.3 && y < 0.7) {
-          // Visual area within occipital
-          if (y > 0.4 && y < 0.65 && distFromCenter > 0.25) {
-            return 8; // Visual Area
-          }
-          return 7; // Occipital Lobe
+          return 9; // Occipital Lobe (RegionId.OCCIPITAL_LOBE)
         }
         
-        // FRONTAL LOBE (anterior) - z < 0.45
+        // FRONTAL LOBE (anterior)
         if (z < 0.45 && y > 0.35) {
-          // Higher mental functions (prefrontal) - top front
-          if (y > 0.6 && z < 0.35) {
-            return 17; // Higher Mental Functions
-          }
-          // Motor area - mid front, central
-          if (y > 0.45 && y < 0.6 && x > 0.35 && x < 0.65) {
-            return 9; // Motor Area
-          }
-          // Broca's area - lower front left (typically left hemisphere)
-          if (x < 0.5 && y < 0.5 && z < 0.4) {
-            return 10; // Broca's Area
-          }
-          return 4; // Frontal Lobe
+          return 6; // Frontal Lobe (RegionId.FRONTAL_LOBE)
         }
         
-        // TEMPORAL LOBE (lateral) - x extremes
+        // TEMPORAL LOBE (lateral)
         if (x < 0.3 || x > 0.7) {
-          // Auditory - mid temporal, lateral
-          if (y > 0.4 && y < 0.6) {
-            return 11; // Auditory Area
-          }
-          // Wernicke's - lower temporal left
-          if (y < 0.5 && x < 0.5) {
-            return 12; // Wernicke's Area
-          }
-          // Olfactory - medial temporal, inferior
-          if (y < 0.4 && distFromCenter < 0.3) {
-            return 16; // Olfactory Area
-          }
-          return 6; // Temporal Lobe
+          return 8; // Temporal Lobe (RegionId.TEMPORAL_LOBE)
         }
         
-        // PARIETAL LOBE (superior) - y > 0.5, middle z
+        // PARIETAL LOBE (superior)
         if (y > 0.5 && z > 0.4 && z < 0.6) {
-          // Sensory area - postcentral, posterior to motor
-          if (z > 0.45 && x > 0.35 && x < 0.65) {
-            return 13; // Sensory Area
-          }
-          return 5; // Parietal Lobe
+          return 7; // Parietal Lobe (RegionId.PARIETAL_LOBE)
         }
         
-        // EMOTIONAL AREA (limbic) - deep central, around ventricles
-        if (distFromCenter < 0.3 && y > 0.3 && y < 0.5 && intensity > 0.3) {
-          return 15; // Emotional Area
-        }
-        
-        // ASSOCIATION AREAS - distributed mid regions
-        if (y > 0.4 && y < 0.6 && distFromCenter > 0.25 && distFromCenter < 0.45) {
-          return 14; // Association Area
-        }
-        
-        // Default: CORTEX (outer layer)
-        // Check if we're in the outer shell (high distance from center)
+        // CORTEX (outer layer)
         if (distFromCenter > 0.35) {
-          return 0; // Cortex
+          return 2; // Cortex (RegionId.CORTEX)
         }
         
-        // Default to cortex for any remaining brain tissue
-        return 0;
+        // WHITE MATTER (default for brain tissue)
+        return 3; // White Matter (RegionId.WHITE_MATTER)
+      }
+
+      // Get region ID - uses mask if available, otherwise falls back to heuristics
+      int getRegionId(vec3 pos, float intensity) {
+        if (uUseSegmentationMask) {
+          int regionId = getRegionIdFromMask(pos);
+          if (regionId > 0) { // Valid region (0 = background)
+            return regionId;
+          }
+        }
+        // Fallback to heuristics
+        return getRegionIdFromHeuristics(pos, intensity);
       }
 
       // Map 3D position and intensity to brain region color
@@ -994,6 +986,19 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
     defaultTfTexture.magFilter = THREE.LinearFilter;
     defaultTfTexture.needsUpdate = true;
 
+    // Default segmentation mask texture (all zeros = background)
+    const defaultSegMask = new THREE.Data3DTexture(
+      new Uint8Array(xDim * yDim * zDim).fill(0),
+      xDim,
+      yDim,
+      zDim
+    );
+    defaultSegMask.format = THREE.RedFormat;
+    defaultSegMask.type = THREE.UnsignedByteType;
+    defaultSegMask.minFilter = THREE.NearestFilter;
+    defaultSegMask.magFilter = THREE.NearestFilter;
+    defaultSegMask.needsUpdate = true;
+
     // Calculate initial render style index based on prop
     let initialStyleIdx = 2; // Default to VOL
     if (renderStyle === VolumeRenderStyle.MIP) initialStyleIdx = 0;
@@ -1020,9 +1025,11 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         uSubsurfaceStrength: { value: subsurfaceStrength },
         uTransferFunction: { value: tfTexture || defaultTfTexture },
         uUseTransferFunction: { value: tfTexture !== null },
-        // Layered Anatomy Mode
+        // Layered Anatomy Mode with Medical Segmentation
         uLayeredAnatomyEnabled: { value: layeredAnatomyState?.enabled || false },
-        uLayeredAnatomyOpacity: { value: 0.95 } // Blend strength for region colors (higher = more distinct textbook-like appearance)
+        uLayeredAnatomyOpacity: { value: 0.95 }, // Blend strength for region colors
+        uSegmentationMask: { value: segmentationTexture || defaultSegMask },
+        uUseSegmentationMask: { value: segmentationTexture !== null } (higher = more distinct textbook-like appearance)
       },
       vertexShader,
       fragmentShader,
@@ -1135,9 +1142,11 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       texture.dispose();
       if (tfTexture) tfTexture.dispose();
       defaultTfTexture.dispose();
+      if (segmentationTexture) segmentationTexture.dispose();
+      defaultSegMask.dispose();
       renderer.dispose();
     };
-  }, [primaryVolume, autoRotate, isolateBrain, cleanupStrength, transferFunction, subsurfaceScattering, subsurfaceStrength]);
+  }, [primaryVolume, autoRotate, isolateBrain, cleanupStrength, transferFunction, subsurfaceScattering, subsurfaceStrength, layeredAnatomyState]);
 
   // Keyboard event listener for spacebar to toggle rotation
   useEffect(() => {
@@ -1251,14 +1260,16 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
           if (layeredAnatomyState) {
             materialRef.current.uniforms.uLayeredAnatomyEnabled.value = layeredAnatomyState.enabled;
             // Opacity for textbook-like distinct coloring (higher = more vibrant, distinct regions)
-            // Note: Individual region visibility toggles affect UI but all regions are rendered
-            // Future enhancement: Pass visibility flags to shader for selective rendering
             const visiblePartsCount = layeredAnatomyState.parts.filter(p => p.visible).length;
             const opacity = visiblePartsCount > 0 ? 0.95 : 0.0; // High opacity for distinct textbook appearance
             materialRef.current.uniforms.uLayeredAnatomyOpacity.value = opacity;
+            
+            // Regenerate segmentation mask if enabled (for now, we'll do this on volume change)
+            // Future: Cache segmentation masks per volume
           } else {
             materialRef.current.uniforms.uLayeredAnatomyEnabled.value = false;
             materialRef.current.uniforms.uLayeredAnatomyOpacity.value = 0.0;
+            materialRef.current.uniforms.uUseSegmentationMask.value = false;
           }
       }
 
