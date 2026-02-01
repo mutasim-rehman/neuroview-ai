@@ -484,93 +484,140 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
       }
 
-      // Map 3D position to brain region color
-      vec3 getRegionColor(vec3 pos) {
-        // Normalized position (0-1)
+      // Convert hex color string to RGB - Textbook-style vibrant colors
+      // Region IDs: 0=Cortex, 1=Cerebellum, 2=Brainstem, 3=Ventricles, 4=Frontal, 5=Parietal, 6=Temporal, 7=Occipital,
+      // 8=VisualArea, 9=MotorArea, 10=BrocaArea, 11=AuditoryArea, 12=WernickeArea, 13=SensoryArea, 
+      // 14=AssociationArea, 15=EmotionalArea, 16=OlfactoryArea, 17=HigherMentalFunctions
+      vec3 getRegionColorById(int regionId) {
+        // Vibrant, distinct colors like medical textbooks
+        vec3 colors[18];
+        colors[0] = vec3(0.2, 0.8, 0.4); // Cortex (bright emerald green)
+        colors[1] = vec3(0.2, 0.5, 1.0); // Cerebellum (bright blue)
+        colors[2] = vec3(1.0, 0.65, 0.0); // Brainstem (bright amber/orange)
+        colors[3] = vec3(0.0, 0.8, 1.0); // Ventricles (bright cyan)
+        colors[4] = vec3(1.0, 0.2, 0.2); // Frontal Lobe (bright red)
+        colors[5] = vec3(0.6, 0.3, 1.0); // Parietal Lobe (bright purple)
+        colors[6] = vec3(1.0, 0.3, 0.7); // Temporal Lobe (bright pink/magenta)
+        colors[7] = vec3(0.0, 0.8, 0.7); // Occipital Lobe (bright teal)
+        colors[8] = vec3(0.4, 0.7, 1.0); // Visual Area (sky blue)
+        colors[9] = vec3(1.0, 0.85, 0.0); // Motor Area (bright yellow)
+        colors[10] = vec3(1.0, 0.5, 0.0); // Broca's Area (bright orange)
+        colors[11] = vec3(0.7, 0.3, 1.0); // Auditory Area (vibrant purple)
+        colors[12] = vec3(1.0, 0.4, 0.8); // Wernicke's Area (bright pink)
+        colors[13] = vec3(0.0, 0.9, 1.0); // Sensory Area (bright cyan)
+        colors[14] = vec3(0.3, 0.9, 0.5); // Association Area (bright green)
+        colors[15] = vec3(1.0, 0.2, 0.5); // Emotional Area (bright rose)
+        colors[16] = vec3(0.6, 1.0, 0.2); // Olfactory Area (bright lime)
+        colors[17] = vec3(0.9, 0.1, 0.1); // Higher Mental Functions (deep red)
+        
+        if (regionId >= 0 && regionId < 18) {
+          return colors[regionId];
+        }
+        return colors[0]; // Default to cortex
+      }
+
+      // Improved anatomical region mapping with intensity-based detection
+      // Returns region ID (-1 for no region/background)
+      int getRegionId(vec3 pos, float intensity) {
         float x = pos.x;
         float y = pos.y;
         float z = pos.z;
         
-        // Distance from center
         vec3 center = vec3(0.5, 0.5, 0.5);
         float distFromCenter = length(pos - center);
         
-        // Approximate region mapping based on spatial heuristics
-        // Occipital (posterior) - z > 0.6
+        // VENTRICLES: Low intensity central areas (CSF-filled spaces)
+        // Check intensity first - ventricles are dark (low intensity) in T1 scans
+        if (intensity < 0.25 && distFromCenter < 0.2 && y > 0.25 && y < 0.75) {
+          return 3; // Ventricles
+        }
+        
+        // BRAINSTEM: Inferior center, small structure
+        if (y < 0.25 && z > 0.35 && z < 0.65 && distFromCenter < 0.15) {
+          return 2; // Brainstem
+        }
+        
+        // CEREBELLUM: Posterior inferior, distinctive shape
+        if (z > 0.55 && y < 0.35 && distFromCenter > 0.15) {
+          return 1; // Cerebellum
+        }
+        
+        // OCCIPITAL LOBE (posterior) - z > 0.6
         if (z > 0.6 && y > 0.3 && y < 0.7) {
-          return vec3(0.078, 0.722, 0.651); // #14b8a6 - Occipital/Visual
+          // Visual area within occipital
+          if (y > 0.4 && y < 0.65 && distFromCenter > 0.25) {
+            return 8; // Visual Area
+          }
+          return 7; // Occipital Lobe
         }
         
-        // Frontal (anterior) - z < 0.4
-        if (z < 0.4 && y > 0.4) {
+        // FRONTAL LOBE (anterior) - z < 0.45
+        if (z < 0.45 && y > 0.35) {
           // Higher mental functions (prefrontal) - top front
-          if (y > 0.6) {
-            return vec3(0.863, 0.149, 0.149); // #dc2626 - Higher Mental Functions
+          if (y > 0.6 && z < 0.35) {
+            return 17; // Higher Mental Functions
           }
-          // Motor area - mid front
-          if (y > 0.45 && y < 0.6) {
-            return vec3(0.984, 0.749, 0.141); // #fbbf24 - Motor Area
+          // Motor area - mid front, central
+          if (y > 0.45 && y < 0.6 && x > 0.35 && x < 0.65) {
+            return 9; // Motor Area
           }
-          // Broca's area - lower front left
-          if (x < 0.5 && y < 0.5) {
-            return vec3(0.976, 0.451, 0.086); // #f97316 - Broca's Area
+          // Broca's area - lower front left (typically left hemisphere)
+          if (x < 0.5 && y < 0.5 && z < 0.4) {
+            return 10; // Broca's Area
           }
-          return vec3(0.937, 0.267, 0.267); // #ef4444 - Frontal Lobe
+          return 4; // Frontal Lobe
         }
         
-        // Temporal (lateral) - x extremes
+        // TEMPORAL LOBE (lateral) - x extremes
         if (x < 0.3 || x > 0.7) {
-          // Auditory - mid temporal
+          // Auditory - mid temporal, lateral
           if (y > 0.4 && y < 0.6) {
-            return vec3(0.659, 0.333, 0.969); // #a855f7 - Auditory Area
+            return 11; // Auditory Area
           }
-          // Wernicke's - lower temporal
+          // Wernicke's - lower temporal left
           if (y < 0.5 && x < 0.5) {
-            return vec3(0.925, 0.282, 0.604); // #ec4899 - Wernicke's Area
+            return 12; // Wernicke's Area
           }
-          // Olfactory - medial temporal
-          if (y < 0.4) {
-            return vec3(0.518, 0.800, 0.086); // #84cc16 - Olfactory Area
+          // Olfactory - medial temporal, inferior
+          if (y < 0.4 && distFromCenter < 0.3) {
+            return 16; // Olfactory Area
           }
-          return vec3(0.925, 0.282, 0.604); // #ec4899 - Temporal Lobe
+          return 6; // Temporal Lobe
         }
         
-        // Parietal (superior) - y > 0.5, middle z
+        // PARIETAL LOBE (superior) - y > 0.5, middle z
         if (y > 0.5 && z > 0.4 && z < 0.6) {
-          // Sensory area - postcentral
-          if (z > 0.45) {
-            return vec3(0.133, 0.827, 0.933); // #22d3ee - Sensory Area
+          // Sensory area - postcentral, posterior to motor
+          if (z > 0.45 && x > 0.35 && x < 0.65) {
+            return 13; // Sensory Area
           }
-          return vec3(0.545, 0.345, 0.965); // #8b5cf6 - Parietal Lobe
+          return 5; // Parietal Lobe
         }
         
-        // Cerebellum (posterior inferior) - z > 0.5, y < 0.3
-        if (z > 0.5 && y < 0.3) {
-          return vec3(0.231, 0.510, 0.965); // #3b82f6 - Cerebellum
+        // EMOTIONAL AREA (limbic) - deep central, around ventricles
+        if (distFromCenter < 0.3 && y > 0.3 && y < 0.5 && intensity > 0.3) {
+          return 15; // Emotional Area
         }
         
-        // Brainstem (inferior center) - y < 0.2, middle z
-        if (y < 0.2 && z > 0.4 && z < 0.6) {
-          return vec3(0.961, 0.620, 0.043); // #f59e0b - Brainstem
+        // ASSOCIATION AREAS - distributed mid regions
+        if (y > 0.4 && y < 0.6 && distFromCenter > 0.25 && distFromCenter < 0.45) {
+          return 14; // Association Area
         }
         
-        // Ventricles (central) - low density areas near center
-        if (distFromCenter < 0.15) {
-          return vec3(0.024, 0.710, 0.831); // #06b6d4 - Ventricles
+        // Default: CORTEX (outer layer)
+        // Check if we're in the outer shell (high distance from center)
+        if (distFromCenter > 0.35) {
+          return 0; // Cortex
         }
         
-        // Association areas (distributed) - mid regions
-        if (y > 0.4 && y < 0.6 && distFromCenter > 0.2 && distFromCenter < 0.4) {
-          return vec3(0.204, 0.827, 0.600); // #34d399 - Association Area
-        }
-        
-        // Emotional area (limbic) - deep central
-        if (distFromCenter < 0.25 && y > 0.3 && y < 0.5) {
-          return vec3(0.957, 0.247, 0.369); // #f43f5e - Emotional Area
-        }
-        
-        // Default cortex color
-        return vec3(0.063, 0.725, 0.506); // #10b981 - Cortex
+        // Default to cortex for any remaining brain tissue
+        return 0;
+      }
+
+      // Map 3D position and intensity to brain region color
+      vec3 getRegionColor(vec3 pos, float intensity) {
+        int regionId = getRegionId(pos, intensity);
+        return getRegionColorById(regionId);
       }
 
       vec2 hitBox(vec3 orig, vec3 dir) {
@@ -598,9 +645,10 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
       vec3 applyColormap(float t, vec3 pos) {
         // If layered anatomy mode is enabled, use region-based coloring
         if (uLayeredAnatomyEnabled) {
-          vec3 regionColor = getRegionColor(pos);
-          // Blend with intensity-based color for depth
+          vec3 regionColor = getRegionColor(pos, t);
+          // Blend with intensity-based color for depth and lighting
           vec3 intensityColor = vec3(t);
+          // Stronger blend for more textbook-like appearance
           return mix(intensityColor, regionColor, uLayeredAnatomyOpacity);
         }
         
@@ -974,7 +1022,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         uUseTransferFunction: { value: tfTexture !== null },
         // Layered Anatomy Mode
         uLayeredAnatomyEnabled: { value: layeredAnatomyState?.enabled || false },
-        uLayeredAnatomyOpacity: { value: 0.85 } // Blend strength for region colors
+        uLayeredAnatomyOpacity: { value: 0.95 } // Blend strength for region colors (higher = more distinct textbook-like appearance)
       },
       vertexShader,
       fragmentShader,
@@ -1202,9 +1250,11 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
           // Update layered anatomy uniforms
           if (layeredAnatomyState) {
             materialRef.current.uniforms.uLayeredAnatomyEnabled.value = layeredAnatomyState.enabled;
-            // Opacity can be adjusted based on visible parts count or user preference
+            // Opacity for textbook-like distinct coloring (higher = more vibrant, distinct regions)
+            // Note: Individual region visibility toggles affect UI but all regions are rendered
+            // Future enhancement: Pass visibility flags to shader for selective rendering
             const visiblePartsCount = layeredAnatomyState.parts.filter(p => p.visible).length;
-            const opacity = visiblePartsCount > 0 ? 0.85 : 0.0;
+            const opacity = visiblePartsCount > 0 ? 0.95 : 0.0; // High opacity for distinct textbook appearance
             materialRef.current.uniforms.uLayeredAnatomyOpacity.value = opacity;
           } else {
             materialRef.current.uniforms.uLayeredAnatomyEnabled.value = false;
