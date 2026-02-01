@@ -1029,7 +1029,7 @@ const VolumeViewer: React.FC<VolumeViewerProps> = ({
         uLayeredAnatomyEnabled: { value: layeredAnatomyState?.enabled || false },
         uLayeredAnatomyOpacity: { value: 0.95 }, // Blend strength for region colors
         uSegmentationMask: { value: segmentationTexture || defaultSegMask },
-        uUseSegmentationMask: { value: segmentationTexture !== null } (higher = more distinct textbook-like appearance)
+        uUseSegmentationMask: { value: segmentationTexture !== null }
       },
       vertexShader,
       fragmentShader,
